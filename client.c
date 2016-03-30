@@ -11,6 +11,7 @@
 #include <errno.h>
 #include "client.h"
 #include "base64.h"
+#include "jsmn/jsmn.h"
 
 #define MAXLINE 1024
 
@@ -30,24 +31,31 @@ struct cache_obj
   struct addrinfo *info;
 };
 
-/*uint64_t parse_json(char *json)
+val_type extract_value_from_json(char *json)
 {
   jsmn_parser parser;
-  jsmntok_t tokens[2];
+  jsmntok_t tokens[5] = {0};
 
   jsmn_init(&parser);
-  jsmn_parse(&parser, json, strlen(json), tokens, 2);
+  int numtoks = jsmn_parse(&parser, json, strlen(json), tokens, 5);
 
-  printf("%s\n",tokens);
-  if(strcmp(val,"val"))
+  int valstart = tokens[4].start;
+  int valend = tokens[4].end;
+
+  int encodedsize = valend - valstart;
+
+  char *buffer = calloc(encodedsize + 1,1);
+
+  memcpy(buffer,&json[valstart],encodedsize);
+
+  if(!strcmp(buffer,"NULL"))
     {
-      printf("Malformed json response.\n");
-      exit(1);
+      free(buffer);
+      buffer = NULL;
     }
-  else
-  return atoi(value);
-  return 2;
-}*/
+
+  return buffer;
+}
 
 //custom send function for sending buffers of arbitrarily large sizes (except for tcp limit)
 void sendbuffer(int fd, char *buffer,uint32_t size)
@@ -132,14 +140,14 @@ int establish_connection(cache_t cache)
       exit(1);
     }
 
-  printf("Connecting...\n");
+  //printf("Connecting...\n");
   if ( connect(socket_fd, cache->info->ai_addr, cache->info->ai_addrlen) == -1)
     {
       printf("connection refused.\n");
       exit(1);
     }
   inet_ntop(cache->info->ai_family, get_in_addr((struct sockaddr *)cache->info->ai_addr), s, sizeof s);
-  printf("Client: connecting to %s\n", s);
+  //printf("Client: connecting to %s\n", s);
 
   return socket_fd;
 }
@@ -207,8 +215,9 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
   //establish connection
   int socket_fd = establish_connection(cache);
 
-  //exact text buffer size needed
-  uint64_t buffsize = strlen(key) + val_size + 10;
+  //text buffer
+  uint64_t encodedval_length = Base64encode_len(val_size);
+  uint64_t buffsize = strlen(key) + encodedval_length + 10;
   char *buffer = calloc(buffsize,1);
   if(buffer == NULL)
     {
@@ -218,10 +227,13 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
   //calculate encoded buffer size, allocate encoded buffer
   int encoded_length = Base64encode_len(buffsize) + 1;
   char *sendbuff = calloc(encoded_length,1);
-  sprintf(buffer,"PUT /%s/",key);
-  memcpy(&buffer[strlen(buffer) + 1],val,val_size);
 
-  printf("Client Request: %s\n",buffer);
+  char *encodedval = calloc(encodedval_length + 1,1);
+  Base64encode(encodedval,val,val_size);
+
+  sprintf(buffer,"PUT /%s/%s",key,encodedval);
+
+  //printf("Client Request: %s\n",buffer);
   Base64encode(sendbuff,buffer,buffsize);
 
   int endmark = strlen(sendbuff);
@@ -238,7 +250,7 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
   char *recvbuff = recvbuffer(socket_fd);
   char decoded[strlen(recvbuff) + 1];
   Base64decode(decoded,recvbuff);
-  printf("Server Response: %s\n",decoded);
+  //printf("Server Response: %s\n",decoded);
 
   free(recvbuff);
 
@@ -262,7 +274,7 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
   int encoded_length = Base64encode_len(buffsize) + 1;
   char *sendbuff = calloc(encoded_length,1);
   sprintf(buffer,"GET /%s",key);
-  printf("Client Request: %s\n",buffer);
+  //printf("Client Request: %s\n",buffer);
   Base64encode(sendbuff,buffer,buffsize);
   //CRLF token
   int endmark = strlen(sendbuff);
@@ -279,14 +291,26 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
   char *recvbuff = recvbuffer(socket_fd);
   char *decoded = calloc(strlen(recvbuff) + 1,1);
   Base64decode(decoded,recvbuff);
-  printf("Server Response: %s\n",decoded);
+  //printf("Server Response: %s\n",decoded);
 
   free(recvbuff);
 
-  //JSON PARSE HER
+  //Parse json and extract value
+  val_type ret = extract_value_from_json(decoded),
+    value;
+  if( ret != NULL )
+    {
+      //if the value was in the cache, decode it back into binary
+      *val_size = Base64decode_len(ret);
+      value = calloc(*val_size,1);
+      Base64decode(value,ret);
+      free(ret);
+    }
+  else value = NULL;
 
   close(socket_fd);
-  return decoded;
+
+  return value;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
