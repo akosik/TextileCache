@@ -65,6 +65,7 @@ int senddgrams(int fd, char *buffer, int size, struct sockaddr *to, socklen_t le
       if(bytes == -1)
         {
           printf("Send failed\n");
+          printf("Bytes sent: %d\n",total);
           return -1;
         }
       total += bytes;

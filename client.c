@@ -140,13 +140,12 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 
   //send and then free the used buffers
   sendbuffer(socket_fd,sendbuff,buffsize);
-  printf("hello\n");
 
   free(sendbuff);
 
   //recieve the buffer, decode, print and return
   char *recvbuff = recvbuffer(socket_fd);
-  //printf("Server Response: %s\n",decoded);
+  printf("Server Response: %s\n",recvbuff);
 
   free(recvbuff);
 
@@ -169,6 +168,7 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
   char *sendbuff = calloc(buffsize,1);
   sprintf(sendbuff,"GET /%s",key);
   printf("Client Request: %s\n",sendbuff);
+  printf("%d\n",buffsize);
 
   //send it off
   if ( senddgrams(udpfd,sendbuff,strlen(sendbuff) + 1,cache->udpinfo->ai_addr,cache->udpinfo->ai_addrlen) < 0)

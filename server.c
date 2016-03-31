@@ -111,6 +111,7 @@ void handle_get(int fd, cache_t cache)
         free(json);
       }
   free(primary);
+  free(request);
 }
 
 
@@ -187,7 +188,7 @@ cache_t handle_request(int fd, cache_t cache)
         if(!strcmp(primary,"shutdown"))
           {
             //destroy the cache
-            cache_destroy(cache);
+            destroy_cache(cache);
 
             //ack back that the cache was cleared out
             const char *msg = "Clearing cache and ~existing cleanly~.\n";
@@ -223,7 +224,9 @@ cache_t handle_request(int fd, cache_t cache)
         sendbuffer(fd,msg,strlen(msg) + 1);
 
       }
-  //free(request);
+  free(request);
+  free(primary);
+  free(secondary);
   return cache;
 }
 

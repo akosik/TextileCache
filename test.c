@@ -509,7 +509,7 @@ int main(int argc, char *argv[])
         udpport = argv[i+1];
     }
 
-  /*
+
   evict_after_get();
   cache_returns_bad_pointers();
   cache_insert_huge();
@@ -530,6 +530,5 @@ int main(int argc, char *argv[])
   //cache_does_not_change_maxmem();
   //custom_hash();
   test_get_head();
-  */
-  test_gets(); //udp test
+  //test_gets(); //udp test
 }

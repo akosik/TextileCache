@@ -61,24 +61,54 @@ void *changeval(void *cacheval, const void *newval, size_t val_size)
 // all data into the new cache
 void cache_resize(cache_t cache)
 {
-  printf("RESIZING: %d\n", cache->capacity*2);
   //Reallocate
   pair *temp = NULL;
-  temp = realloc(cache->dict, cache->capacity * 2 * sizeof(pair));
-  if(temp != NULL) cache->dict = temp;
-  else
+  temp = calloc(cache->capacity * 2, sizeof(pair));
+  if(temp == NULL)
     {
       printf("Unable to resize cache. Your cache is doomed.\n");
       exit(1);
     }
 
-  //Allocate space for eviction structs
-  uint64_t i = cache->capacity;
-  for( ; i < cache->capacity * 2; ++i)
+  //Rehash old keys into new spots in new table and free the old table
+  //this is obviously not constant time but resize is rare and when amortized over all
+  //requests it does work out to be constant time
+  uint64_t hashval;
+  key_type key;
+  val_type val;
+  node eviction;
+  uint32_t size;
+  pair *current;
+  int j = 0;
+  for(uint64_t i = 0; i < cache->capacity; ++i)
     {
-      cache->dict[i].key = NULL;
-      cache->dict[i].val = NULL;
-      cache->dict[i].evict = calloc(1,sizeof(struct node_t));
+      if(cache->dict[i].key != NULL)
+        {
+          //Rehash and probe, then reset everything
+          hashval = cache->hash(cache->dict[i].key) % (cache->capacity * 2);
+          for(current = &temp[hashval]; current->key != NULL; current = &temp[++hashval % (cache->capacity * 2)]) continue;
+          current->key = calloc(strlen(cache->dict[i].key)+1,sizeof(uint8_t));
+          strcpy(current->key,cache->dict[i].key);
+          current->val = changeval(current->val,cache->dict[i].val,cache->dict[i].size);
+          current->evict = cache->dict[i].evict;
+          current->size = cache->dict[i].size;
+          current->evict->tabindex = hashval % (cache->capacity * 2);
+          free(cache->dict[i].key);
+          free(cache->dict[i].val);
+          cache->dict[i].key = NULL;
+        }
+    }
+  free(cache->dict);
+  cache->dict = temp;
+
+  //Allocate space for eviction structs for empty slots
+  for(uint64_t i = 0; i < cache->capacity * 2; ++i)
+    {
+      if(cache->dict[i].key == NULL)
+        {
+          cache->dict[i].val = NULL;
+          cache->dict[i].evict = calloc(1,sizeof(struct node_t));
+        }
     }
 
   cache->capacity *= 2;
@@ -260,5 +290,9 @@ void destroy_cache(cache_t cache)
 
 void print_cache(cache_t cache)
 {
-  for(int i = 0; i < cache->capacity; ++i) if(cache->dict[i].key != NULL) printf("%s,%d\n",cache->dict[i].key,*(uint64_t*)cache->dict[i].val);
+  for(int i = 0; i < cache->capacity; ++i)
+    {
+      if(cache->dict[i].key != NULL) printf("key: %s,val: %d, evict address: %d\n",cache->dict[i].key,*(uint64_t*)cache->dict[i].val,cache->dict[i].evict);
+      else printf("evict address: %d\n",cache->dict[i].evict);
+    }
 }
