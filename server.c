@@ -75,13 +75,13 @@ char* recvbuffer(int fd)
   char *response = calloc(MAXLINE,1);
   uint32_t total = 0,
     response_size = MAXLINE,
-    bytes = 0,
-    eot = 2;
+    bytes = 0;
   char *tmp;
 
-  while( buffer[eot - 2] != '\r' && buffer[eot - 1] != '\n' )
+  do
     {
       bytes = read(fd,buffer,MAXLINE);
+      printf("%s\n",buffer);
       if(bytes == -1)
         {
           printf("Read failed\n");
@@ -102,10 +102,9 @@ char* recvbuffer(int fd)
         }
       memcpy(response + total,buffer,bytes);
       total += bytes;
-      eot = bytes;
     }
+  while( buffer[bytes - 1] != '\0' );
 
-    response[response_size - 2] = '\0';
     return response;
 }
 
@@ -114,43 +113,33 @@ cache_t handle_request(int fd, cache_t cache)
 {
   //recieve client request
   char *request = recvbuffer(fd);
+  int request_size = strlen(request) + 1;
 
   //decode and print request (binary data in request will not print)
   char command[10] = {0};
-  int decodedsize = Base64decode_len(request),
-    encodedsize;
-  char *buffer = calloc(decodedsize,1);
-  if(buffer == NULL)
+  char *primary = calloc(request_size,1);
+    if(primary == NULL)
     {
       printf("Allocation Failed\n");
       return cache;
     }
-  char *primary = calloc(decodedsize,1);
-    if(buffer == NULL)
+  char *secondary = calloc(request_size,1);
+    if(secondary == NULL)
     {
       printf("Allocation Failed\n");
-      free(buffer);
-      return cache;
-    }
-  char *secondary = calloc(decodedsize,1);
-    if(buffer == NULL)
-    {
-      printf("Allocation Failed\n");
-      free(buffer);
       free(primary);
       return cache;
     }
 
-  Base64decode(buffer,request);
-  //printf("%s\n",buffer);
+  printf("%s\n",request);
 
   //get command
-  parse_request(buffer,command,NULL,NULL,decodedsize);
+  parse_request(request,command,NULL,NULL,request_size);
 
   if (!strcmp(command,"GET"))
       {
         //get key and retrieve value
-        parse_request(buffer,NULL,primary,NULL,decodedsize);
+        parse_request(request,NULL,primary,NULL,request_size);
         uint32_t val_size = 0;
         char *ret = (char *)cache_get(cache,primary,&val_size);
 
@@ -162,60 +151,34 @@ cache_t handle_request(int fd, cache_t cache)
           sprintf(json,"{ \"key\" : \"%s\", \"val\" : \"%s\" }",primary,ret);
         else
           sprintf(json,"{ \"key\" : \"%s\", \"val\" : \"%s\" }",primary,"NULL");
-        //printf("Response Buffer: %s\n",json);
-
-        encodedsize = Base64encode_len(strlen(json) + 1) + 2;
-        char *encoded = calloc(encodedsize,1);
-        Base64encode(encoded,json,strlen(json) + 1);
-        int endmark = strlen(encoded);
-        encoded[endmark] = '\r';
-        encoded[endmark + 1] = '\n';
+        //printf("Response Request: %s\n",json);
 
         //send
-        write(fd,encoded,strlen(encoded));
-
+        write(fd,json,strlen(json));
         free(json);
-        free(encoded);
       }
 
     else if (!strcmp(command,"PUT"))
       {
         //get key and value and set in cache
-        parse_request(buffer,NULL,primary,secondary,decodedsize);
+        parse_request(request,NULL,primary,secondary,request_size);
+        //printf("%llu, %s\n",cache_space_used(cache),secondary);
         cache_set(cache,primary,secondary,strlen(secondary) + 1);
-
-        printf("secondary: %s\n",secondary);
 
         //ack back that the set was successful (so far as the server knows)
         const char *msg = "Value set in cache.\n";
-        encodedsize = Base64encode_len(strlen(msg) + 1) + 2;
-        char *encoded = calloc(encodedsize,1);
-        Base64encode(encoded,msg,strlen(msg) + 1);
-        int endmark = strlen(encoded);
-        encoded[endmark] = '\r';
-        encoded[endmark + 1] = '\n';
-        write(fd,encoded,strlen(encoded));
-
-        free(encoded);
+        write(fd,msg,strlen(msg));
       }
 
     else if (!strcmp(command,"DELETE"))
       {
         //get key and delete associated value
-        parse_request(buffer,NULL,primary,NULL,decodedsize);
+        parse_request(request,NULL,primary,NULL,request_size);
         cache_delete(cache,primary);
 
         //ack back that the operation was completed
         const char *msg = "Value deleted.\n";
-        encodedsize = Base64encode_len(strlen(msg) + 1) + 2;
-        char *encoded = calloc(encodedsize,1);
-        Base64encode(encoded,msg,strlen(msg) + 1);
-        int endmark = strlen(encoded);
-        encoded[endmark] = '\r';
-        encoded[endmark + 1] = '\n';
-        write(fd,encoded,strlen(encoded));
-
-        free(encoded);
+        write(fd,msg,strlen(msg) + 1);
       }
 
     else if (!strcmp(command,"HEAD"))
@@ -230,21 +193,14 @@ cache_t handle_request(int fd, cache_t cache)
 
         char msg[MAXLINE] = {0};
         sprintf(msg,"Date: %d-%d-%d %d:%d:%d\nVersion: HTTP 1.1\nAccept: text/plain\nContent-Type: application/json\nSpace Used: %d\n",tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,space_used);
-        encodedsize = Base64encode_len(strlen(msg) + 1) + 2;
-        char *encoded = calloc(encodedsize,1);
-        Base64encode(encoded,msg,strlen(msg) + 1);
-        int endmark = strlen(encoded);
-        encoded[endmark] = '\r';
-        encoded[endmark + 1] = '\n';
-        write(fd,encoded,strlen(encoded));
+        write(fd,msg,strlen(msg) + 1);
 
-        free(encoded);
       }
 
     else if (!strcmp(command,"POST"))
       {
         //get primary argument
-        parse_request(buffer,NULL,primary,NULL,decodedsize);
+        parse_request(request,NULL,primary,NULL,request_size);
 
         if(!strcmp(primary,"shutdown"))
           {
@@ -253,50 +209,27 @@ cache_t handle_request(int fd, cache_t cache)
 
             //ack back that the cache was cleared out
             const char *msg = "Clearing cache and ~existing cleanly~.\n";
-            encodedsize = Base64encode_len(strlen(msg) + 1) + 2;
-            char *encoded = calloc(encodedsize,1);
-            Base64encode(encoded,msg,strlen(msg) + 1);
-            int endmark = strlen(encoded);
-            encoded[endmark] = '\r';
-            encoded[endmark + 1] = '\n';
-            write(fd,encoded,strlen(encoded));
+            write(fd,msg,strlen(msg) + 1);
 
-            free(encoded);
             return NULL;
           }
         else if(!strcmp(primary,"memsize"))
           {
-            parse_request(buffer,NULL,NULL,secondary,decodedsize);
+            parse_request(request,NULL,NULL,secondary,request_size);
             uint64_t memsize = atoi(secondary);
             if(cache == NULL || cache_space_used(cache) == 0)
               {
                 cache = create_cache(memsize);
-                char msg[MAXLINE] = {0};
+                char msg[100] = {0};
                 printf("Cache created with maxmem of %d.\n",memsize);
                 sprintf(msg,"Cache created with maxmem of %d.\n",memsize);
-                encodedsize = Base64encode_len(strlen(msg) + 1) + 2;
-                char *encoded = calloc(encodedsize,1);
-                Base64encode(encoded,msg,strlen(msg) + 1);
-                int endmark = strlen(encoded);
-                encoded[endmark] = '\r';
-                encoded[endmark + 1] = '\n';
-                write(fd,encoded,strlen(encoded));
-
-                free(encoded);
+                write(fd,msg,strlen(msg) + 1);
               }
             else
               {
                 printf("Cache create called after initialization\n");
                 char *msg = "400";
-                encodedsize = Base64encode_len(strlen(msg) + 1) + 2;
-                char *encoded = calloc(encodedsize,1);
-                Base64encode(encoded,msg,strlen(msg) + 1);
-                int endmark = strlen(encoded);
-                encoded[endmark] = '\r';
-                encoded[endmark + 1] = '\n';
-                write(fd,encoded,strlen(encoded));
-
-                free(encoded);
+                write(fd,msg,strlen(msg) + 1);
               }
           }
       }
@@ -304,17 +237,9 @@ cache_t handle_request(int fd, cache_t cache)
     else
       {
         const char *msg = "Malformed requested.\n";
-        encodedsize = Base64encode_len(strlen(msg) + 1) + 2;
-        char *encoded = calloc(encodedsize,1);
-        Base64encode(buffer,msg,strlen(msg) + 1);
-        int endmark = strlen(buffer);
-        buffer[endmark] = '\r';
-        buffer[endmark + 1] = '\n';
-        write(fd,buffer,strlen(buffer) + 1);
+        write(fd,msg,strlen(msg) + 1);
 
-        free(encoded);
       }
-  free(buffer);
   free(request);
   return cache;
 }

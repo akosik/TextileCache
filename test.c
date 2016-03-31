@@ -19,30 +19,30 @@ void set_multiple()
 {
   cache_t cache = init();
   const uint8_t
-    *key0 = "hello",
-    *key1 = "thenumber3",
-    *key2 = "goodbye",
-    *key3 = "wow";
-  uint64_t
-    value0 = 1,
-    value1 = 3;
-  uint32_t value2 = 304;
-  uint64_t value3 = 123123124;
+    *key0 = (const uint8_t*) "hello",
+    *key1 = (const uint8_t*) "thenumber3",
+    *key2 = (const uint8_t*) "goodbye",
+    *key3 = (const uint8_t*) "wow";
+  uint8_t
+    *value0 = "hello",
+    *value1 = "how are you";
+  uint8_t *value2 = "good thanks";
+  uint8_t *value3 = "me too";
 
-  cache_set(cache,key0,&value0,sizeof(uint64_t));
-  cache_set(cache,key1,&value1,sizeof(uint64_t));
-  cache_set(cache,key2,&value2,sizeof(uint32_t));
-  cache_set(cache,key3,&value3,sizeof(uint64_t));
+  cache_set(cache,key0,value0,strlen(value0) + 1);
+  cache_set(cache,key1,value1,strlen(value1) + 1);
+  cache_set(cache,key2,value2,strlen(value2) + 1);
+  cache_set(cache,key3,value3,strlen(value3) + 1);
 
   uint32_t val_size = 0;
 
   uint8_t
-    *val1 = (uint64_t*)cache_get(cache,key0,&val_size),
-    *val2 = (uint64_t*)cache_get(cache,key1,&val_size);
-  uint32_t *val3 = (uint32_t*)cache_get(cache,key2,&val_size);
-  uint64_t *val4 = (uint64_t*)cache_get(cache,key3,&val_size);
+    *val1 = (uint8_t*)cache_get(cache,key0,&val_size),
+    *val2 = (uint8_t*)cache_get(cache,key1,&val_size);
+  uint8_t *val3 = (uint32_t*)cache_get(cache,key2,&val_size);
+  uint8_t *val4 = (uint64_t*)cache_get(cache,key3,&val_size);
 
-  test(*val1 == 1 && *val2 == 3 && *val3 == 304 && *val4 == 123123124, "cache_set stores (multiple) values that are accessible");
+  test(!strcmp(val1,"hello") && !strcmp(val2,"how are you") && !strcmp(val3,"good thanks") && !strcmp(val4,"me too"), "cache_set stores (multiple) values that are accessible");
 
   free(val1);
   free(val2);
@@ -70,13 +70,13 @@ uint64_t our_modified_jenkins(key_type key)
 void custom_hash()
 {
     uint8_t key[2] = {'a', '\0'};
-    uint8_t value[6] = {10,11,12,13,14,15};
+    uint8_t value[6] = "12345";
     uint32_t val_size = 0;
     cache_t cache = create_cache(100 * sizeof(value));
 
     cache_set(cache, key, value, sizeof(value));
     uint8_t *ret = (uint8_t*)cache_get(cache, key, &val_size);
-    test(ret[0] == 10 && ret[1] == 11 && ret[2] == 12 && ret[3] == 13 && ret[4] == 14 && ret[5] == 15, "cache_get works when given a custom hash (doesn't have to use custom hash)");
+    test(!strcmp(key,"12345"), "cache_get works when given a custom hash (doesn't have to use custom hash)");
 
     destroy_cache(cache);
 }
@@ -86,13 +86,14 @@ void custom_hash()
 void test_get_valsize()
 {
     uint8_t key[2] = {'a', '\0'};
-    uint8_t value[6] = {10,11,12,13,14,15};
+    uint8_t *value = "size me";
     uint32_t val_size = 0;
     cache_t cache = create_cache(100 * sizeof(value));
 
-    cache_set(cache, key, value, sizeof(value));
+    cache_set(cache, key, value, strlen(value) + 1);
     cache_get(cache, key, &val_size);
-    test(val_size != 0, "cache_get sets val_size pointer");
+    test(val_size == 8, "cache_get sets val_size pointer");
+    printf("%d\n",val_size);
 
     destroy_cache(cache);
 }
@@ -152,24 +153,24 @@ void eviction_couple()
 {
   cache_t cache = create_cache(64);
   key_type
-    key0 = "hello",
-    key1 = "thenumber3",
-    key2 = "goodbye",
-    key3 = "wow";
-  uint64_t
-    value0 = 1,
-    value1 = 3;
-  uint8_t chararray[60];
-  uint8_t value3 = 253;
+    key0 = (const uint8_t*) "hello",
+    key1 = (const uint8_t*) "thenumber3",
+    key2 = (const uint8_t*) "goodbye",
+    key3 = (const uint8_t*) "wow";
+  uint8_t
+    *value0 = "a",
+    *value1 = "b";
+  uint8_t *chararray = "01234567890123456789012345678901234567890123456789012345678";
+  uint8_t *value3 = "c";
 
-  cache_set(cache,key0,&value0,sizeof(uint64_t));
-  cache_set(cache,key1,&value1,sizeof(uint64_t));
+  cache_set(cache,key0,value0,strlen(value0) + 1);
+  cache_set(cache,key1,value1,strlen(value1) + 1);
   cache_set(cache,key2,chararray,60);
-  cache_set(cache,key3,&value3,sizeof(uint8_t));
+  cache_set(cache,key3,value3,strlen(value3) + 1);
 
   uint32_t val_size = 0;
   uint8_t *val = (uint8_t*) cache_get(cache,key3,&val_size);
-  test(*val == 253,"keys are evicted to make space for new values");
+  test(!strcmp(val,"c"),"keys are evicted to make space for new values");
   destroy_cache(cache);
 }
 
@@ -180,38 +181,38 @@ void evict_after_get()
 {
   cache_t cache = create_cache(64);
   key_type
-    key0 = "hello",
-    key1 = "thenumber3",
-    key2 = "goodbye",
-    key3 = "wow";
+    key0 = (const uint8_t*) "hello",
+    key1 = (const uint8_t*) "thenumber3",
+    key2 = (const uint8_t*) "goodbye",
+    key3 = (const uint8_t*) "wow";
   uint8_t
-    value0 = 1,
-    value1 = 3;
-  uint8_t value2[60];
-  uint64_t value3 = 123123124;
+    *value0 = "1",
+    *value1 = "3";
+  uint8_t value2[60] = "01234567890123456789012345678901234567890123456789012345678";
+  uint8_t *value3 = "123123124";
 
-  cache_set(cache,key0,&value0,sizeof(uint8_t));
-  cache_set(cache,key1,&value1,sizeof(uint8_t));
-  cache_set(cache,key2,&value2,60);
+  cache_set(cache,key0,value0,strlen(value0) + 1);
+  cache_set(cache,key1,value1,strlen(value1) + 1);
+  cache_set(cache,key2,value2,60);
 
   uint32_t val_size = 0;
-  uint64_t *val;
+  uint8_t *val;
 
   // access first input
-  val = (uint64_t*) cache_get(cache,key0,&val_size);
+  val = (uint8_t*) cache_get(cache,key0,&val_size);
 
   // Set something that will require an eviction
-  cache_set(cache,key3,&value3,sizeof(uint64_t));
+  cache_set(cache,key3,value3,strlen(value3) + 1);
 
   // now get the last used value
   uint8_t *val0 = (uint8_t*) cache_get(cache,key0,&val_size);
   uint8_t *val1 = (uint8_t*) cache_get(cache,key1,&val_size);
   uint8_t *val2 = (uint8_t*) cache_get(cache,key2,&val_size);
-  uint64_t *val3 = (uint64_t*) cache_get(cache,key3,&val_size);
+  uint8_t *val3 = (uint8_t*) cache_get(cache,key3,&val_size);
 
-  printf("%d,%d,%d,%d\n",val0,val1,val2,val3);
+  printf("%s,%s,%s,%s\n",val0,val1,val2,val3);
 
-  test(val0 != NULL && val1 == NULL && val2 == NULL && *val3 == 123123124,"Last accessed key is evicted");
+  test(!strcmp(val0,"1") && val1 == NULL && val2 == NULL && !strcmp(val3,"123123124"),"Last accessed key is evicted");
   destroy_cache(cache);
 }
 
@@ -228,7 +229,7 @@ struct test_struct
 void struct_set()
 {
   cache_t cache = init();
-  key_type keystruct = "struct";
+  key_type keystruct = (const uint8_t*) "struct";
   struct test_struct value4 = { .word = "it's a bag of words!", .num = 42, .stuff = NULL};
   uint32_t *size = calloc(1,sizeof(uint32_t));
 
@@ -250,18 +251,17 @@ void struct_set()
 void get_modified()
 {
   cache_t cache = init();
-  key_type key = "hello";
-  uint8_t val1 = 201;
-  uint32_t val2 = 53;
-  uint32_t *size = calloc(1,sizeof(uint32_t));
+  key_type key = (const uint8_t*) "hello";
+  uint8_t *val1 = "201";
+  uint8_t *val2 = "53";
+  uint32_t size = 0;
 
-  cache_set(cache,key,&val1,sizeof(uint8_t));
-  cache_set(cache,key,&val2,sizeof(uint32_t));
-  uint32_t *testval = (uint32_t*)cache_get(cache,key,size);
+  cache_set(cache,key,val1,strlen(val1) + 1);
+  cache_set(cache,key,val2,strlen(val2) + 1);
+  uint8_t *testval = (uint8_t*)cache_get(cache,key,&size);
 
-  //test(*testval == 53,"cache updates values");
+  test(!strcmp(val2,"53"),"cache updates values");
   free(testval);
-  free(size);
   destroy_cache(cache);
 }
 
@@ -270,11 +270,10 @@ void get_modified()
 void get_nonexistent()
 {
   cache_t cache = init();
-  key_type key = "sartre";
-  uint32_t *size = calloc(1,sizeof(uint32_t));
-  char *ret = cache_get(cache,key,size);
+  key_type key = (const uint8_t*) "sartre";
+  uint32_t size = 0;
+  char *ret = (char*)cache_get(cache,key,&size);
   test(ret == NULL,"cache returns NULL for gets for keys not in cache");
-  free(size);
   free(ret);
   destroy_cache(cache);
 }
@@ -298,15 +297,15 @@ void resize()
       //printf("Before: %s,%d\n",key,key);
       strcat(key,"h");
       //printf("After:  %s\n",key);
-      cache_set(cache,key,&i,sizeof(uint64_t));
+      cache_set(cache,key,key,strlen(key) + 1);
       //printf("AfterS: %s\n",key);
       //for (int j = 0; j < 50; ++j) printf("%d ",key[j]);
 
     }
   uint32_t val_size = 0;
-  uint64_t *val = (uint64_t*)cache_get(cache,key,&val_size);
-  test(*val == 10000,"cache resizes without failure (initial table size checked, all should resize, none should evict)");
-  printf("%d\n",*val);
+  char *val = (char*)cache_get(cache,key,&val_size);
+  test(!strcmp(val,key),"cache resizes without failure (initial table size checked, all should resize, none should evict)");
+  printf("%s\n",val);
   free(key);
   free(val);
   destroy_cache(cache);
@@ -317,8 +316,8 @@ void resize()
 void val_too_big()
 {
   cache_t cache = create_cache(90);
-  key_type key = "big";
-  char large[100];
+  key_type key = (const uint8_t*) "big";
+  char large[100] = "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678";
   cache_set(cache,key,large, 100);
   uint32_t val_size = 0;
   char *ret = (char*)cache_get(cache,key,&val_size);
@@ -346,15 +345,16 @@ void val_too_big()
 void val_too_big_but_replacing()
 {
   cache_t cache = create_cache(82);
-  key_type standin = "i shouldnt get removed";
-  uint8_t standinval = 34;
-  cache_set(cache,standin,&standinval,sizeof(uint8_t));
-  key_type key = "doppleganger";
-  uint8_t string[80];
+  key_type standin = (const uint8_t*) "i shouldnt get removed";
+  uint8_t *standinval = "34";
+  cache_set(cache,standin,standinval,strlen(standinval) + 1);
+  key_type key = (const uint8_t*) "doppleganger";
+  uint8_t string[80] = "0123456789012345678901234567890123456789012345678901234567890123456789012345678";
+  printf("%s\n",string);
   cache_set(cache,key,string,80);
 
-  uint64_t new = 43;
-  cache_set(cache,key,&new,sizeof(uint64_t));
+  uint8_t *new = "43";
+  cache_set(cache,key,new,strlen(new) + 1);
 
   uint32_t val_size = 0;
 
@@ -376,15 +376,15 @@ void val_too_big_but_replacing()
 void val_too_big_and_replacing()
 {
   cache_t cache = create_cache(89);
-  key_type standin = "i shouldnt get removed";
-  uint64_t standinval = 34;
-  cache_set(cache,standin,&standinval,sizeof(uint64_t));
-  key_type key = "doppleganger";
+  key_type standin = (const uint8_t*) "i shouldnt get removed";
+  uint8_t *standinval = "hello there";
+  cache_set(cache,standin,standinval,strlen(standinval) + 1);
+  key_type key = (const uint8_t*) "doppleganger";
   uint8_t string[80] = "i shall remain";
   cache_set(cache,key,string,80);
 
-  uint8_t new[90];
-  cache_set(cache,key,&new,90);
+  uint8_t new[90] = "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678";
+  cache_set(cache,key,new,90);
 
   uint32_t val_size = 0;
 
@@ -392,7 +392,6 @@ void val_too_big_and_replacing()
 
   test(!strcmp(notreplaced,"i shall remain"),"cache doesnt replace a value if the new value is too big for the cache");
   destroy_cache(cache);
-  printf("here\n");
 }
 
 //cache stores its own values instead of references passed in by the user
@@ -401,14 +400,14 @@ void val_too_big_and_replacing()
 void cache_mallocing_vals()
 {
   cache_t cache = init();
-  key_type unique = "we are part of the collective, we have no name";
-  uint64_t mutableval = 34;
-  cache_set(cache,unique,&mutableval,sizeof(uint64_t));
+  key_type unique = (const uint8_t*) "we are part of the collective, we have no name";
+  uint8_t *mutableval = "34";
+  cache_set(cache,unique,mutableval,strlen(mutableval) + 1);
 
-  mutableval = 23;
+  mutableval = "23";
   uint32_t val_size = 0;
-  uint64_t *valnow = (uint64_t*)cache_get(cache,unique,&val_size);
-  test(*valnow == 34,"cache malloc's values instead of storing references to (possible) local variables");
+  uint8_t *valnow = (uint8_t*)cache_get(cache,unique,&val_size);
+  test(!strcmp(valnow,"34"),"cache malloc's values instead of storing references to (possible) local variables");
   free(valnow);
   destroy_cache(cache);
 }
@@ -418,8 +417,8 @@ void cache_mallocing_vals()
 void cache_insert_huge()
 {
   cache_t cache = create_cache(512);
-  key_type huge = "large";
-  uint8_t *largeval = malloc(51);
+  key_type huge = (const uint8_t*) "large";
+  uint8_t largeval[51] = "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww";
   cache_set(cache,huge,largeval,51);
   uint32_t val_size = 0;
   uint8_t *retval = (uint8_t*)cache_get(cache,huge,&val_size);
@@ -431,18 +430,19 @@ void cache_insert_huge()
 void cache_returns_bad_pointers()
 {
   cache_t cache = init();
-  key_type key = "a value";
-  uint64_t num = 25;
-  cache_set(cache,key,&num,sizeof(uint64_t));
+  key_type key = (const uint8_t*) "a value";
+  uint8_t *num = "25";
+  cache_set(cache,key,num,strlen(num) + 1);
 
   uint32_t val_size = 0;
-  uint64_t *ret = (uint64_t*)cache_get(cache,key,&val_size);
+  uint8_t *ret = (uint8_t*)cache_get(cache,key,&val_size);
 
-  *ret = 5;
+  ret[0] = 'n';
+  ret[1] = '\0';
   free(ret);
   val_size = 0;
-  uint64_t *twentyfive = (uint64_t*)cache_get(cache,key,&val_size);
-  test(*twentyfive == 25, "cache returns pointers to copied values, not in cache, when returning from cache_get");
+  uint8_t *twentyfive = (uint8_t*)cache_get(cache,key,&val_size);
+  test(!strcmp(twentyfive,"25"), "cache returns pointers to copied values, not in cache, when returning from cache_get");
   free(twentyfive);
   destroy_cache(cache);
 }
@@ -450,9 +450,9 @@ void cache_returns_bad_pointers()
 void test_get_head()
 {
   cache_t cache = init();
-  key_type key = "new";
-  uint64_t value = 1;
-  cache_set(cache,key,&value,sizeof(uint64_t));
+  key_type key = (const uint8_t*) "new";
+  uint8_t *value = "123456789";
+  cache_set(cache,key,value,strlen(value) + 1);
 
   get_head(cache);
   destroy_cache(cache);
@@ -470,7 +470,7 @@ int main(int argc, char *argv[])
     case 3:
       if(!strcmp(argv[1],"-h"))
         {
-          hostname = atoi(argv[2]);
+          hostname = argv[2];
           port = "2001";
         }
       else if(!strcmp(argv[1],"-t"))
@@ -482,13 +482,13 @@ int main(int argc, char *argv[])
     case 5:
       if(!strcmp(argv[1],"-h"))
         {
-          hostname = atoi(argv[2]);
+          hostname = argv[2];
           port = argv[4];
         }
       else if(!strcmp(argv[1],"-t"))
         {
           port = argv[2];
-          hostname = atoi(argv[4]);
+          hostname = argv[4];
         }
       break;
     default:
@@ -508,10 +508,10 @@ int main(int argc, char *argv[])
   get_modified();
   get_nonexistent();
   resize();
-  //val_too_big();
-  //val_too_big_but_replacing();
+  val_too_big();
+  val_too_big_but_replacing();
   cache_mallocing_vals();
-  //val_too_big_and_replacing();
+  val_too_big_and_replacing();
   //cache_does_not_change_maxmem();
   //custom_hash();
   test_get_head();

@@ -31,7 +31,7 @@ struct cache_obj
   struct addrinfo *info;
 };
 
-val_type extract_value_from_json(char *json)
+char *extract_value_from_json(char *json)
 {
   jsmn_parser parser;
   jsmntok_t tokens[5] = {0};
@@ -42,16 +42,17 @@ val_type extract_value_from_json(char *json)
   int valstart = tokens[4].start;
   int valend = tokens[4].end;
 
-  int encodedsize = valend - valstart;
+  int valsize = valend - valstart;
 
-  char *buffer = calloc(encodedsize + 1,1);
+  char *buffer = calloc(valsize + 1,1);
 
-  memcpy(buffer,&json[valstart],encodedsize);
+  memcpy(buffer,&json[valstart],valsize);
+  printf("%s\n",buffer);
 
   if(!strcmp(buffer,"NULL"))
     {
       free(buffer);
-      buffer = NULL;
+      return NULL;
     }
 
   return buffer;
@@ -82,11 +83,10 @@ char* recvbuffer(int fd)
   char *response = calloc(MAXLINE,1);
   uint32_t total = 0,
     response_size = MAXLINE,
-    bytes = 0,
-    eot = 2;
+    bytes = 0;
   char *tmp;
 
-  while( buffer[eot - 2] != '\r' && buffer[eot - 1] != '\n' )
+  while( buffer[bytes] == '\0' )
     {
       bytes = read(fd,buffer,MAXLINE);
       if(bytes == -1)
@@ -109,10 +109,8 @@ char* recvbuffer(int fd)
         }
       memcpy(response + total,buffer,bytes);
       total += bytes;
-      eot = bytes;
     }
 
-    response[response_size - 2] = '\0';
     return response;
 }
 
@@ -183,23 +181,16 @@ cache_t create_cache(uint64_t maxmem)
   int socket_fd = establish_connection(cache);
 
   //text and encoded buffers
-  char buffer[MAXLINE] = {0},
-    sendbuff[MAXLINE] = {0};
-  sprintf(buffer,"POST /memsize/%d",maxmem);
-  printf("Client Request: %s\n",buffer);
-  Base64encode(sendbuff,buffer,strlen(buffer) + 1);
-  int endmark = strlen(sendbuff);
-  sendbuff[endmark] = '\r';
-  sendbuff[endmark + 1] = '\n';
+  char sendbuff[50] = {0};
+  sprintf(sendbuff,"POST /memsize/%llu",maxmem);
+  printf("Client Request: %s\n",sendbuff);
 
   //send the encoded buffer
-  sendbuffer(socket_fd,sendbuff,strlen(sendbuff));
+  sendbuffer(socket_fd,sendbuff,strlen(sendbuff) + 1);
 
   //recieve the response, decode, print and return
   char *recvbuff = recvbuffer(socket_fd);
-  char decoded[strlen(recvbuff) + 1];
-  Base64decode(decoded,recvbuff);
-  printf("Server Response: %s\n",decoded);
+  printf("Server Response: %s\n",recvbuff);
 
   free(recvbuff);
 
@@ -215,41 +206,21 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
   //establish connection
   int socket_fd = establish_connection(cache);
 
-  //text buffer
-  uint64_t encodedval_length = Base64encode_len(val_size);
-  uint64_t buffsize = strlen(key) + encodedval_length + 10;
-  char *buffer = calloc(buffsize,1);
-  if(buffer == NULL)
-    {
-      printf("Allocation failed.\n");
-      exit(1);
-    }
   //calculate encoded buffer size, allocate encoded buffer
-  int encoded_length = Base64encode_len(buffsize) + 1;
-  char *sendbuff = calloc(encoded_length,1);
+  int buffsize = strlen(key) + strlen(val) + 10;
+  char *sendbuff = calloc(buffsize,1);
 
-  char *encodedval = calloc(encodedval_length + 1,1);
-  Base64encode(encodedval,val,val_size);
+  sprintf(sendbuff,"PUT /%s/%s",key,val);
 
-  sprintf(buffer,"PUT /%s/%s",key,encodedval);
-
-  //printf("Client Request: %s\n",buffer);
-  Base64encode(sendbuff,buffer,buffsize);
-
-  int endmark = strlen(sendbuff);
-  sendbuff[endmark] = '\r';
-  sendbuff[endmark + 1] = '\n';
+  printf("Client Request: %s\n",sendbuff);
 
   //send and then free the used buffers
-  sendbuffer(socket_fd,sendbuff,encoded_length);
+  sendbuffer(socket_fd,sendbuff,buffsize);
 
-  free(buffer);
   free(sendbuff);
 
   //recieve the buffer, decode, print and return
   char *recvbuff = recvbuffer(socket_fd);
-  char decoded[strlen(recvbuff) + 1];
-  Base64decode(decoded,recvbuff);
   //printf("Server Response: %s\n",decoded);
 
   free(recvbuff);
@@ -270,47 +241,30 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
   //define buffer and encoded buffer specs
   //10 is arbitrary, just needs to be big enough for GET keyword
   int buffsize = strlen(key) + 10;
-  char *buffer = calloc(buffsize,1);
-  int encoded_length = Base64encode_len(buffsize) + 1;
-  char *sendbuff = calloc(encoded_length,1);
-  sprintf(buffer,"GET /%s",key);
+  char *sendbuff = calloc(buffsize,1);
+  sprintf(sendbuff,"GET /%s",key);
   //printf("Client Request: %s\n",buffer);
-  Base64encode(sendbuff,buffer,buffsize);
-  //CRLF token
-  int endmark = strlen(sendbuff);
-  sendbuff[endmark] = '\r';
-  sendbuff[endmark + 1] = '\n';
 
   //send it off
-  sendbuffer(socket_fd,sendbuff,encoded_length);
+  sendbuffer(socket_fd,sendbuff,buffsize);
 
-  free(buffer);
   free(sendbuff);
 
   //recieve the buffer, decode, print and return
   char *recvbuff = recvbuffer(socket_fd);
-  char *decoded = calloc(strlen(recvbuff) + 1,1);
-  Base64decode(decoded,recvbuff);
   //printf("Server Response: %s\n",decoded);
 
   free(recvbuff);
 
   //Parse json and extract value
-  val_type ret = extract_value_from_json(decoded),
-    value;
-  if( ret != NULL )
-    {
-      //if the value was in the cache, decode it back into binary
-      *val_size = Base64decode_len(ret);
-      value = calloc(*val_size,1);
-      Base64decode(value,ret);
-      free(ret);
-    }
-  else value = NULL;
+  char *ret = extract_value_from_json(recvbuff);
+  if(ret != NULL)
+    *val_size = strlen(ret) + 1;
+  else
+    *val_size = 0;
 
   close(socket_fd);
-
-  return value;
+  return ret;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -325,28 +279,17 @@ void cache_delete(cache_t cache, key_type key)
 
   //declare buffers (10, again to hold HTTP keyword)
   int buffsize = strlen(key) + 10;
-  char *buffer = calloc(buffsize,1);
-  int encoded_length = Base64encode_len(buffsize) + 1;
-  char *sendbuff = calloc(encoded_length,1);
-  sprintf(buffer,"DELETE /%s",key);
-  printf("Client Request: %s\n",buffer);
-  Base64encode(sendbuff,buffer,strlen(buffer) + 1);
-  //CRLF
-  int endmark = strlen(sendbuff);
-  sendbuff[endmark] = '\r';
-  sendbuff[endmark + 1] = '\n';
+  char *sendbuff = calloc(buffsize,1);
+  sprintf(sendbuff,"DELETE /%s",key);
+  printf("Client Request: %s\n",sendbuff);
 
   //send
-  sendbuffer(socket_fd,sendbuff,encoded_length);
-
-  free(buffer);
+  sendbuffer(socket_fd,sendbuff,buffsize);
   free(sendbuff);
 
   //receive
   char *recvbuff = recvbuffer(socket_fd);
-  char decoded[strlen(recvbuff) + 1];
-  Base64decode(decoded,recvbuff);
-  printf("Server Response: %s\n",decoded);
+  printf("Server Response: %s\n",recvbuffer);
 
   free(recvbuff);
 
@@ -364,29 +307,18 @@ void destroy_cache(cache_t cache)
   int socket_fd = establish_connection(cache);
 
   //populate buffer and encode
-  char *buffer = "POST /shutdown";
-  printf("Client Request: %s\n",buffer);
-  int buffsize = strlen(buffer) + 1;
-  int encoded_length = Base64encode_len(buffsize) + 1;
-  char *sendbuff = calloc(encoded_length,1);
-  Base64encode(sendbuff,buffer,buffsize);
-  //CRLF
-  int endmark = strlen(sendbuff);
-  sendbuff[endmark] = '\r';
-  sendbuff[endmark + 1] = '\n';
+  char *sendbuff = "POST /shutdown";
+  printf("Client Request: %s\n",sendbuff);
 
   //send
-  sendbuffer(socket_fd,sendbuff,encoded_length);
+  sendbuffer(socket_fd,sendbuff,strlen(sendbuff) + 1);
 
   //receive
   char *recvbuff = recvbuffer(socket_fd);
-  char decoded[strlen(recvbuff) + 1];
-  Base64decode(decoded,recvbuff);
-  printf("Server Response: %s\n",decoded);
+  printf("Server Response: %s\n",recvbuff);
 
   //free everything and close
   free(recvbuff);
-  free(sendbuff);
   close(socket_fd);
   freeaddrinfo(cache->info);
   free(cache);
@@ -400,23 +332,13 @@ void get_head(cache_t cache)
 {
   int socket_fd = establish_connection(cache);
 
-  int bytes = 0;
-  char *buffer = "HEAD";
-  printf("Client Request: %s\n",buffer);
-  int buffsize = strlen(buffer) + 1;
-  int encoded_length = Base64encode_len(buffsize) + 1;
-  char sendbuff[encoded_length];
-  Base64encode(sendbuff,buffer,buffsize);
-  int endmark = strlen(sendbuff);
-  sendbuff[endmark] = '\r';
-  sendbuff[endmark + 1] = '\n';
+  char *sendbuff = "HEAD";
+  printf("Client Request: %s\n",sendbuff);
 
-  sendbuffer(socket_fd,sendbuff,encoded_length);
+  sendbuffer(socket_fd,sendbuff,strlen(sendbuff) + 1);
 
   char *recvbuff = recvbuffer(socket_fd);
-  char decoded[strlen(recvbuff) + 1];
-  Base64decode(decoded,recvbuff);
-  printf("Server Response: %s\n",decoded);
+  printf("Server Response: %s\n",recvbuff);
 
   free(recvbuff);
 

@@ -5,18 +5,41 @@
 // adjusts pointers to add a reference to a key-value pair into the LRU queue
 void lru_add(evict_class *e, node kvnode, uint64_t htable_index)
 {
-  if(e->mrupair != NULL)
+  //already the mrupair? don't do anything
+  if(e->mrupair != kvnode)
     {
-      kvnode->next = e->mrupair;
-      e->mrupair->prev = kvnode;
+      //if you aren't the mrupair but are the lrupair, there must be other nodes
+      if(e->lrupair == kvnode)
+        {
+          e->lrupair = kvnode->prev;
+          kvnode->prev->next = NULL;
+          kvnode->next = e->mrupair;
+          kvnode->next->prev = kvnode;
+        }
+      // middle of the queue
+      else if(kvnode->next != NULL && kvnode->prev != NULL)
+        {
+          kvnode->next->prev = kvnode->prev;
+          kvnode->prev->next = kvnode->next;
+          kvnode->next = e->mrupair;
+          kvnode->next->prev = kvnode;
+        }
+      //null queue
+      else if(e->mrupair == NULL && e->lrupair == NULL)
+        {
+          e->lrupair = kvnode;
+        }
+      //aren't in the queue yet
+      else
+        {
+          kvnode->next = e->mrupair;
+          kvnode->next->prev = kvnode;
+        }
+      //necessary updates if you aren't the mru already
+      kvnode->prev = NULL;
+      e->mrupair = kvnode;
+      kvnode->tabindex = htable_index;
     }
-  else
-    {
-      kvnode->next = NULL;
-      e->lrupair = kvnode;
-    }
-  e->mrupair = kvnode;
-  kvnode->tabindex = htable_index;
 }
 
 // Removes node from LRU queue and fixes dangling pointers
@@ -40,6 +63,7 @@ uint64_t lru_remove(evict_class *e)
       e->lrupair->prev = NULL;
       e->lrupair = newlru;
     }
+  //null queue
   else
     {
       e->lrupair = NULL;
