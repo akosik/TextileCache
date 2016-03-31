@@ -29,7 +29,7 @@ void lru_add(evict_class *e, node kvnode, uint64_t htable_index)
         {
           e->lrupair = kvnode;
         }
-      //aren't in the queue yet
+      //not in the queue yet
       else
         {
           kvnode->next = e->mrupair;

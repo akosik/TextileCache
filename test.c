@@ -1,11 +1,13 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <mach/mach_time.h>
 #include "testing.h"
 #include "client.h"
 
 char *hostname;
-char *port;
+char *tcpport;
+char *udpport;
 
 //Initializes cache to maxmem of 255
 cache_t init()
@@ -304,7 +306,7 @@ void resize()
     }
   uint32_t val_size = 0;
   char *val = (char*)cache_get(cache,key,&val_size);
-  test(!strcmp(val,key),"cache resizes without failure (initial table size checked, all should resize, none should evict)");
+  test(val != NULL && !strcmp(val,key),"cache resizes without failure (initial table size checked, all should resize, none should evict)");
   printf("%s\n",val);
   free(key);
   free(val);
@@ -458,43 +460,56 @@ void test_get_head()
   destroy_cache(cache);
 }
 
+void test_gets()
+{
+  cache_t cache = init();
+
+  key_type key = "the get key";
+  val_type val = "the get value";
+  cache_set(cache,key,val,strlen(val) + 1);
+
+  uint32_t val_size = 0;
+
+  /* Get the timebase info */
+  mach_timebase_info_data_t info;
+  mach_timebase_info(&info);
+
+  uint64_t start = mach_absolute_time();
+  for(int i = 0; i < 1000; ++i)
+    {
+      free(cache_get(cache,key,&val_size));
+    }
+  uint64_t end = mach_absolute_time();
+
+  uint64_t duration = end - start;
+
+  /* Convert to nanoseconds */
+  duration *= info.numer;
+  duration /= info.denom;
+
+  duration /= 1000;
+
+  printf("Time per Get: %llu nanoseconds\n",duration);
+
+  destroy_cache(cache);
+}
+
 int main(int argc, char *argv[])
 {
-  printf("%d\n",argc);
-  switch(argc)
+  hostname = "127.0.0.1";
+  tcpport = "2001";
+  udpport = "3001";
+  for(int i = 2;i < argc; ++i)
     {
-    case 1:
-      hostname = "127.0.0.1";
-      port = "2001";
-      break;
-    case 3:
-      if(!strcmp(argv[1],"-h"))
-        {
-          hostname = argv[2];
-          port = "2001";
-        }
-      else if(!strcmp(argv[1],"-t"))
-        {
-          port = argv[2];
-          hostname = "127.0.0.1";
-        }
-      break;
-    case 5:
-      if(!strcmp(argv[1],"-h"))
-        {
-          hostname = argv[2];
-          port = argv[4];
-        }
-      else if(!strcmp(argv[1],"-t"))
-        {
-          port = argv[2];
-          hostname = argv[4];
-        }
-      break;
-    default:
-      printf("Usage: server -m <hostname> -t <port#> \n");
-      exit(1);
+      if(!strcmp(argv[i],"-h"))
+        hostname = argv[i+1];
+      else if (!strcmp(argv[i],"-t"))
+        tcpport = argv[i+1];
+      else if(!strcmp(argv[i],"-u"))
+        udpport = argv[i+1];
     }
+
+  /*
   evict_after_get();
   cache_returns_bad_pointers();
   cache_insert_huge();
@@ -515,4 +530,6 @@ int main(int argc, char *argv[])
   //cache_does_not_change_maxmem();
   //custom_hash();
   test_get_head();
+  */
+  test_gets(); //udp test
 }

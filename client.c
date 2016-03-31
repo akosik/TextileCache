@@ -12,6 +12,8 @@
 #include "client.h"
 #include "base64.h"
 #include "jsmn/jsmn.h"
+#include "udp.h"
+#include "tcp.h"
 
 #define MAXLINE 1024
 
@@ -27,8 +29,10 @@ explicilty says not to rely on an ending CRLF token) but since the server and cl
 struct cache_obj
 {
   char* host;
-  char* port;
-  struct addrinfo *info;
+  char* tcpport;
+  char* udpport;
+  struct addrinfo *tcpinfo;
+  struct addrinfo *udpinfo;
 };
 
 char *extract_value_from_json(char *json)
@@ -58,99 +62,6 @@ char *extract_value_from_json(char *json)
   return buffer;
 }
 
-//custom send function for sending buffers of arbitrarily large sizes (except for tcp limit)
-void sendbuffer(int fd, char *buffer,uint32_t size)
-{
-  uint32_t total = 0,bytes = 0,leftToSend = size;
-  while( total < size )
-    {
-      bytes = write(fd,buffer + total,leftToSend);
-
-      if(bytes == -1)
-        {
-          printf("Send failed\n");
-          exit(1);
-        }
-      total += bytes;
-      leftToSend -= bytes;
-    }
-}
-
-//handles multi-packet requests, assumes only one request will come at a time
-char* recvbuffer(int fd)
-{
-  char buffer[MAXLINE] = {0};
-  char *response = calloc(MAXLINE,1);
-  uint32_t total = 0,
-    response_size = MAXLINE,
-    bytes = 0;
-  char *tmp;
-
-  while( buffer[bytes] == '\0' )
-    {
-      bytes = read(fd,buffer,MAXLINE);
-      if(bytes == -1)
-        {
-          printf("Read failed\n");
-          exit(1);
-        }
-      if( total + bytes > response_size)
-        {
-          tmp = calloc(response_size*2,1);
-          if (tmp == NULL)
-            {
-              printf("Allocation failed, value too big\n");
-              exit(1);
-            }
-          memcpy(tmp,response,response_size);
-          free(response);
-          response = tmp;
-          response_size *= 2;
-        }
-      memcpy(response + total,buffer,bytes);
-      total += bytes;
-    }
-
-    return response;
-}
-
-//tiny helper function for printing out the host ip (ipv4/ipv6 agnostic)
-void *get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
-
-//helper function to establish a connection to the host
-//does NOT call getaddrinfo, which must be supplied to the function
-//through the cache struct
-int establish_connection(cache_t cache)
-{
-  int socket_fd;
-  char s[INET6_ADDRSTRLEN];
-
-  if ( (socket_fd = socket(cache->info->ai_family, cache->info->ai_socktype, cache->info->ai_protocol)) == -1)
-    {
-      printf("socket error.\n");
-      exit(1);
-    }
-
-  //printf("Connecting...\n");
-  if ( connect(socket_fd, cache->info->ai_addr, cache->info->ai_addrlen) == -1)
-    {
-      printf("connection refused.\n");
-      exit(1);
-    }
-  inet_ntop(cache->info->ai_family, get_in_addr((struct sockaddr *)cache->info->ai_addr), s, sizeof s);
-  //printf("Client: connecting to %s\n", s);
-
-  return socket_fd;
-}
-
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Create Cache
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -159,26 +70,41 @@ cache_t create_cache(uint64_t maxmem)
   //create local cache object
   cache_t cache = calloc(1,sizeof(struct cache_obj));
   extern char *hostname;
-  extern char *port;
+  extern char *tcpport;
+  extern char *udpport;
   cache->host = hostname;
-  cache->port = port;
-  cache->info = calloc(1,sizeof(struct addrinfo));
+  cache->tcpport = tcpport;
+  cache->udpport = udpport;
+  cache->tcpinfo = calloc(1,sizeof(struct addrinfo));
+  cache->udpinfo = calloc(1,sizeof(struct addrinfo));
+
   struct addrinfo hints;
+  int status;
+
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_DGRAM;
+  if ((status = getaddrinfo(cache->host, "3001", &hints, &cache->udpinfo)) != 0)
+    {
+      fprintf(stderr, "getaddrinfo for udp: %s\n", gai_strerror(status));
+      freeaddrinfo(cache->udpinfo);
+      free(cache);
+      exit(1);
+    }
+
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
-
-  int status;
-  if( (status = getaddrinfo(cache->host, cache->port, &hints, &cache->info)) != 0)
+  if( (status = getaddrinfo(cache->host, cache->tcpport, &hints, &cache->tcpinfo)) != 0)
     {
-      printf("getaddrinfo error: %s\n", gai_strerror(status));
-      freeaddrinfo(cache->info);
+      printf("getaddrinfo error for tcp: %s\n", gai_strerror(status));
+      freeaddrinfo(cache->tcpinfo);
       free(cache);
       exit(1);
     }
 
   //connect to server
-  int socket_fd = establish_connection(cache);
+  int tcp_fd = establish_tcp_client(cache);
 
   //text and encoded buffers
   char sendbuff[50] = {0};
@@ -186,15 +112,15 @@ cache_t create_cache(uint64_t maxmem)
   printf("Client Request: %s\n",sendbuff);
 
   //send the encoded buffer
-  sendbuffer(socket_fd,sendbuff,strlen(sendbuff) + 1);
+  sendbuffer(tcp_fd,sendbuff,strlen(sendbuff) + 1);
 
   //recieve the response, decode, print and return
-  char *recvbuff = recvbuffer(socket_fd);
+  char *recvbuff = recvbuffer(tcp_fd);
   printf("Server Response: %s\n",recvbuff);
 
   free(recvbuff);
 
-  close(socket_fd);
+  close(tcp_fd);
   return cache;
 }
 
@@ -204,18 +130,17 @@ cache_t create_cache(uint64_t maxmem)
 void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 {
   //establish connection
-  int socket_fd = establish_connection(cache);
+  int socket_fd = establish_tcp_client(cache);
 
   //calculate encoded buffer size, allocate encoded buffer
   int buffsize = strlen(key) + strlen(val) + 10;
   char *sendbuff = calloc(buffsize,1);
-
   sprintf(sendbuff,"PUT /%s/%s",key,val);
-
   printf("Client Request: %s\n",sendbuff);
 
   //send and then free the used buffers
   sendbuffer(socket_fd,sendbuff,buffsize);
+  printf("hello\n");
 
   free(sendbuff);
 
@@ -236,23 +161,27 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
 {
   //establish connection
-  int socket_fd = establish_connection(cache);
+  int udpfd = establish_udp_client(cache);
 
   //define buffer and encoded buffer specs
   //10 is arbitrary, just needs to be big enough for GET keyword
   int buffsize = strlen(key) + 10;
   char *sendbuff = calloc(buffsize,1);
   sprintf(sendbuff,"GET /%s",key);
-  //printf("Client Request: %s\n",buffer);
+  printf("Client Request: %s\n",sendbuff);
 
   //send it off
-  sendbuffer(socket_fd,sendbuff,buffsize);
+  if ( senddgrams(udpfd,sendbuff,strlen(sendbuff) + 1,cache->udpinfo->ai_addr,cache->udpinfo->ai_addrlen) < 0)
+    return NULL;
 
   free(sendbuff);
 
   //recieve the buffer, decode, print and return
-  char *recvbuff = recvbuffer(socket_fd);
-  //printf("Server Response: %s\n",decoded);
+  char *recvbuff = recvdgrams(udpfd,cache->udpinfo->ai_addr);
+  printf("Server Response: %s\n",recvbuff);
+
+  if(!strcmp(recvbuff,"Packet Lost 500"))
+    return NULL;
 
   free(recvbuff);
 
@@ -263,7 +192,7 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
   else
     *val_size = 0;
 
-  close(socket_fd);
+  close(udpfd);
   return ret;
 }
 
@@ -275,7 +204,7 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
 void cache_delete(cache_t cache, key_type key)
 {
   //establish connection
-  int socket_fd = establish_connection(cache);
+  int socket_fd = establish_tcp_client(cache);
 
   //declare buffers (10, again to hold HTTP keyword)
   int buffsize = strlen(key) + 10;
@@ -304,7 +233,7 @@ void cache_delete(cache_t cache, key_type key)
 void destroy_cache(cache_t cache)
 {
   //establish connection
-  int socket_fd = establish_connection(cache);
+  int socket_fd = establish_tcp_client(cache);
 
   //populate buffer and encode
   char *sendbuff = "POST /shutdown";
@@ -320,7 +249,8 @@ void destroy_cache(cache_t cache)
   //free everything and close
   free(recvbuff);
   close(socket_fd);
-  freeaddrinfo(cache->info);
+  freeaddrinfo(cache->tcpinfo);
+  freeaddrinfo(cache->udpinfo);
   free(cache);
 }
 
@@ -330,7 +260,7 @@ void destroy_cache(cache_t cache)
 
 void get_head(cache_t cache)
 {
-  int socket_fd = establish_connection(cache);
+  int socket_fd = establish_tcp_client(cache);
 
   char *sendbuff = "HEAD";
   printf("Client Request: %s\n",sendbuff);

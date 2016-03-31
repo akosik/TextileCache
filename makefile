@@ -3,10 +3,10 @@ CC = gcc
 CFLAGS = -Wall -pedantic -Werror
 
 server:
-	$(CC) server.c cache.c lru.c base64.c -o $@
+	$(CC) server.c cache.c lru.c tcp.c udp.c -o $@
 
 client:
-	$(CC) test.c testing.c client.c base64.c jsmn/jsmn.c -o $@
+	$(CC) test.c testing.c client.c jsmn/jsmn.c tcp.c udp.c -o $@
 
 clean_server:
 	rm server

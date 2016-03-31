@@ -141,7 +141,6 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
     {
       uint64_t index = cache->evict->remove(cache->evict);
       current = &cache->dict[index];
-      printf("Evicting: %s\n",current->key);
       free(current->key);
       free(current->val);
       current->key = NULL;
