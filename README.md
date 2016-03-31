@@ -15,8 +15,7 @@ Those running on an operating system other than Mac will need to add -std=c99 fl
 ###STEP 1 
 ####TCP server:
 For the TCP implementation we used Port 2001 (description of port: CAPTAN Test Stand System).
-We passed our simple tests on the TCP server using curl. We used raw sockets in our implementtation of TCP.
-
+We passed our simple tests on the TCP server using curl. We did not use any libraries when implementing sockets for TCP.
 
 ###STEP 2
 ####TCP client:
