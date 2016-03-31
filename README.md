@@ -3,6 +3,8 @@
 <br />
 #####Disclaimer:
 ```
+In the works: Debugging code to work for Linux
+
 Compiled and tested on Mac.
 Those running on an operating system other than Mac will need to add -std=c99 flag in makefile.
 
