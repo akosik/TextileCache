@@ -1,7 +1,6 @@
 //TCP Establish, Send and Receive
 
 #include "tcp.h"
-#include "cache.h"
 
 #define MAXLINE 1024
 

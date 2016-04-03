@@ -3,17 +3,20 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdint.h>
+#include <inttypes.h>
 #include <sys/types.h>
-#include <sys/socket.h>
+#include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <netdb.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <string.h>
+#include "cache.h"
 
 //returns file descriptor, does everything up to accept
-int establish_tcp(char *tcpport);
+int establish_tcp_server(char *tcpport);
+
+int establish_tcp_client(cache_t cache);
 
 void sendbuffer(int fd, char *buffer, uint32_t size);
 

@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 
 //Eviction Struct for each key-value pair
 //The user needs to redefine this if they want to
