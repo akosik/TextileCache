@@ -10,7 +10,6 @@
 #include <string.h>
 #include <errno.h>
 #include "client.h"
-#include "base64.h"
 #include "jsmn/jsmn.h"
 #include "udp.h"
 #include "tcp.h"
