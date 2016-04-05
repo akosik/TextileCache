@@ -116,7 +116,6 @@ char* recvbuffer(int fd)
   do
     {
       bytes = read(fd,buffer,MAXLINE);
-      printf("%s%d\n",buffer,buffer[bytes - 1]);
       if(bytes == -1)
         {
           printf("Read failed\n");

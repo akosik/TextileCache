@@ -23,7 +23,6 @@ int parse_request(char *buffer, char *command, char *primary, char *secondary, u
   int i,cpybufferindex = 0;
   for(i = 0; i < buffsize; ++i)
     {
-      //printf("command: %c\n",buffer[i]);
       if( buffer[i] != ' ' && buffer[i] != '\0')
         {
           if (command != NULL)
@@ -40,7 +39,6 @@ int parse_request(char *buffer, char *command, char *primary, char *secondary, u
       cpybufferindex = 0;
       for(++i ; i < buffsize; ++i)
         {
-          //printf("primary: %c\n",buffer[i]);
           if(buffer[i] != '/' && buffer[i] != '\0')
             {
               if(primary != NULL)
@@ -57,7 +55,6 @@ int parse_request(char *buffer, char *command, char *primary, char *secondary, u
           cpybufferindex = 0;
           for(++i ; i < buffsize; ++i)
             {
-              //printf("secondary: %c\n",buffer[i]);
               if(buffer[i] != '\0')
                 {
                   if(secondary != NULL)
@@ -79,6 +76,9 @@ void handle_get(int fd, cache_t cache)
   int size = sizeof(struct sockaddr);
 
   char *request = recvdgrams(fd,&client);
+  if(request == NULL)
+    return cache;
+
   int request_size = strlen(request) + 1;
 
   char command[10] = {0};
@@ -88,7 +88,7 @@ void handle_get(int fd, cache_t cache)
       printf("Allocation Failed\n");
     }
 
-  printf("Request: %s\n",request);
+  printf("UDP Request: %s\n",request);
   parse_request(request,command,primary,NULL,request_size);
 
   if (!strcmp(command,"GET"))
@@ -138,7 +138,7 @@ cache_t handle_request(int fd, cache_t cache)
       return cache;
     }
 
-    printf("%s\n",request);
+    //printf("TCP Request: %s\n",request);
 
   //get command
   parse_request(request,command,NULL,NULL,request_size);

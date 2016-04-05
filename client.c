@@ -40,6 +40,7 @@ char *extract_value_from_json(char *json)
   jsmntok_t tokens[5] = {0};
 
   jsmn_init(&parser);
+
   int numtoks = jsmn_parse(&parser, json, strlen(json), tokens, 5);
 
   int valstart = tokens[4].start;
@@ -48,9 +49,7 @@ char *extract_value_from_json(char *json)
   int valsize = valend - valstart;
 
   char *buffer = calloc(valsize + 1,1);
-
-  memcpy(buffer,&json[valstart],valsize);
-  printf("%s\n",buffer);
+  memcpy(buffer,json + valstart,valsize);
 
   if(!strcmp(buffer,"NULL"))
     {
@@ -135,7 +134,7 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
   int buffsize = strlen(key) + strlen(val) + 10;
   char *sendbuff = calloc(buffsize,1);
   sprintf(sendbuff,"PUT /%s/%s",key,val);
-  printf("Client Request: %s\n",sendbuff);
+  //printf("Client Request: %s\n",sendbuff);
 
   //send and then free the used buffers
   sendbuffer(socket_fd,sendbuff,buffsize);
@@ -144,7 +143,7 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 
   //recieve the buffer, decode, print and return
   char *recvbuff = recvbuffer(socket_fd);
-  printf("Server Response: %s\n",recvbuff);
+  //printf("Server Response: %s\n",recvbuff);
 
   free(recvbuff);
 
@@ -166,7 +165,7 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
   int buffsize = strlen(key) + 10;
   char *sendbuff = calloc(buffsize,1);
   sprintf(sendbuff,"GET /%s",key);
-  printf("Client Request: %s\n",sendbuff);
+  //printf("Client Request: %s\n",sendbuff);
   printf("%d\n",buffsize);
 
   //send it off
@@ -177,15 +176,16 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
 
   //recieve the buffer, decode, print and return
   char *recvbuff = recvdgrams(udpfd,cache->udpinfo->ai_addr);
-  printf("Server Response: %s\n",recvbuff);
+  if(recvbuff == NULL)
+    {
+      return NULL;
+    }
 
-  if(!strcmp(recvbuff,"Packet Lost 500"))
-    return NULL;
-
-  free(recvbuff);
+  //printf("Server Response: %s\n",recvbuff);
 
   //Parse json and extract value
   char *ret = extract_value_from_json(recvbuff);
+  free(recvbuff);
   if(ret != NULL)
     *val_size = strlen(ret) + 1;
   else

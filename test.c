@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
-#include <mach/mach_time.h>
+//#include <mach/mach_time.h>
 #include "testing.h"
 #include "client.h"
 
@@ -296,20 +296,17 @@ void resize()
     }
   for(; i <= 10000; ++i)
     {
-      //printf("Before: %s,%d\n",key,key);
       strcat(key,"h");
-      //printf("After:  %s\n",key);
       cache_set(cache,key,key,strlen(key) + 1);
-      //printf("AfterS: %s\n",key);
-      //for (int j = 0; j < 50; ++j) printf("%d ",key[j]);
-
     }
   uint32_t val_size = 0;
   char *val = (char*)cache_get(cache,key,&val_size);
   test(val != NULL && !strcmp(val,key),"cache resizes without failure (initial table size checked, all should resize, none should evict)");
-  printf("%s\n",val);
   free(key);
-  free(val);
+
+  if( val != NULL)
+    free(val);
+
   destroy_cache(cache);
 }
 
@@ -459,7 +456,7 @@ void test_get_head()
   get_head(cache);
   destroy_cache(cache);
 }
-
+/*
 void test_gets()
 {
   cache_t cache = init();
@@ -469,8 +466,8 @@ void test_gets()
   cache_set(cache,key,val,strlen(val) + 1);
 
   uint32_t val_size = 0;
-
-  /* Get the timebase info */
+  
+  // Get the timebase info 
   mach_timebase_info_data_t info;
   mach_timebase_info(&info);
 
@@ -483,7 +480,7 @@ void test_gets()
 
   uint64_t duration = end - start;
 
-  /* Convert to nanoseconds */
+  // Convert to nanoseconds
   duration *= info.numer;
   duration /= info.denom;
 
@@ -493,6 +490,7 @@ void test_gets()
 
   destroy_cache(cache);
 }
+*/
 
 int main(int argc, char *argv[])
 {

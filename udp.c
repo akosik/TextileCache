@@ -36,6 +36,14 @@ int establish_udp_server(char *udpport)
 
   int socket_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 
+  //set socket timeout to 1000ms
+  struct timeval tv;
+  tv.tv_sec = 0;
+  tv.tv_usec = 1000;
+  if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
+    perror("Error");
+  }
+
   if (bind(socket_fd, res->ai_addr, res->ai_addrlen) < 0)
     {
       printf("bind error.\n");
@@ -53,6 +61,15 @@ int establish_udp_client(cache_t cache)
       printf("socket error.\n");
       exit(1);
     }
+
+  //set socket timeout to 1000ms
+  struct timeval tv;
+  tv.tv_sec = 0;
+  tv.tv_usec = 1000;
+  if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
+    perror("Error");
+  }
+
   return socket_fd;
 }
 
@@ -89,7 +106,8 @@ char* recvdgrams(int fd, struct sockaddr_storage *from)
       if(bytes == -1)
         {
           printf("Read failed\n");
-          exit(1);
+	  free(response);
+          return NULL;
         }
       if( total + bytes > response_size)
         {
@@ -97,7 +115,8 @@ char* recvdgrams(int fd, struct sockaddr_storage *from)
           if (tmp == NULL)
             {
               printf("Allocation failed, value too big\n");
-              exit(1);
+	      free(response);
+              return NULL;
             }
           memcpy(tmp,response,response_size);
           free(response);

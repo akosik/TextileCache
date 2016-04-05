@@ -11,6 +11,7 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 #include "cache.h"
 
 //Grabs and binds a socket, returns the socket fd

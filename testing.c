@@ -10,6 +10,6 @@
 
 void test(bool test, const char *label)
 {
-    if (test) printf(KGRN "" CHECK "" RESET " : %s\n", label);
-    else printf(KRED "" EX "" RESET " : %s\n", label);
+    if (test) printf(KGRN "" CHECK "" RESET "Passed : %s\n", label);
+    else printf(KRED "" EX "" RESET "Failed : %s\n", label);
 }
