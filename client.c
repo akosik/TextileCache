@@ -166,7 +166,6 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
   char *sendbuff = calloc(buffsize,1);
   sprintf(sendbuff,"GET /%s",key);
   //printf("Client Request: %s\n",sendbuff);
-  printf("%d\n",buffsize);
 
   //send it off
   if ( senddgrams(udpfd,sendbuff,strlen(sendbuff) + 1,cache->udpinfo->ai_addr,cache->udpinfo->ai_addrlen) < 0)

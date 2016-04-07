@@ -10,6 +10,7 @@ typedef struct pair_t
   val_type val;
   size_t size;
   node evict;
+  uint32_t maxprobe;
 } pair;
 
 struct cache_obj
@@ -73,26 +74,25 @@ void cache_resize(cache_t cache)
   //Rehash old keys into new spots in new table and free the old table
   //this is obviously not constant time but resize is rare and when amortized over all
   //requests it does work out to be constant time
-  uint64_t hashval;
-  key_type key;
-  val_type val;
-  node eviction;
-  uint32_t size;
-  pair *current;
+  pair *current, *hashpair;
   int j = 0;
+  int probelength = 0;
+  uint64_t hashval;
   for(uint64_t i = 0; i < cache->capacity; ++i)
     {
       if(cache->dict[i].key != NULL)
         {
           //Rehash and probe, then reset everything
           hashval = cache->hash(cache->dict[i].key) % (cache->capacity * 2);
-          for(current = &temp[hashval]; current->key != NULL; current = &temp[++hashval % (cache->capacity * 2)]) continue;
+	  hashpair = &temp[hashval];
+          for(current = &temp[hashval]; current->key != NULL; current = &temp[++hashval % (cache->capacity * 2)]) ++probelength;
           current->key = calloc(strlen(cache->dict[i].key)+1,sizeof(uint8_t));
           strcpy(current->key,cache->dict[i].key);
           current->val = changeval(current->val,cache->dict[i].val,cache->dict[i].size);
           current->evict = cache->dict[i].evict;
           current->size = cache->dict[i].size;
           current->evict->tabindex = hashval % (cache->capacity * 2);
+	  hashpair->maxprobe = probelength > hashpair->maxprobe ? probelength : hashpair->maxprobe;
           free(cache->dict[i].key);
           free(cache->dict[i].val);
           cache->dict[i].key = NULL;
@@ -157,8 +157,6 @@ cache_t create_cache(uint64_t maxmem)
 // from the cache to accomodate the new value.
 void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 {
-  pair *current;
-
   // if the value is too big, don't even bother, tell the user to get more RAM
   if(val_size > cache->maxmem)
     {
@@ -166,8 +164,25 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
       return;
     }
 
+  pair *current;
+  uint32_t old_val_size = 0;
+  uint64_t hashval = cache->hash(key) % cache->capacity;
+  uint32_t probelength = cache->dict[hashval].maxprobe;
+  uint64_t curr_index;
+  for(int i = 0; i <= probelength; ++i )
+    {
+      curr_index = ((hashval + i) % cache->capacity);
+      if(cache->dict[curr_index].key != NULL)
+	{
+	  if(!strcmp(cache->dict[curr_index].key,key))
+	    {
+	      old_val_size = cache->dict[curr_index].size;
+	      break;
+	    }
+	}
+    }
   // Remove values until the cache has enough room for the new value
-  while(cache->memsize + val_size > cache->maxmem)
+  while((cache->memsize + val_size - old_val_size) > cache->maxmem)
     {
       uint64_t index = cache->evict->remove(cache->evict);
       current = &cache->dict[index];
@@ -181,9 +196,23 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 
   // hash the key and perform linear probing until an open spot is found.
   // Since the cache resizes, the cache should never be full.
-  uint64_t hashval = cache->hash(key) % cache->capacity;
-  for(current = &cache->dict[hashval]; current->key != NULL; current = &cache->dict[++hashval % cache->capacity])
+  pair *hashpair = &cache->dict[hashval];
+  pair *tentative_abode = NULL;
+  uint32_t tentative_hashval;
+  uint32_t i = 0;
+  //hash to the designated spot and then probe to the farthest spot any collided key has probed to before you!
+  for(current = &cache->dict[hashval]; i <= probelength; current = &cache->dict[++hashval % cache->capacity])
     {
+      ++i;
+      if(current->key == NULL) 
+	{
+	  if(tentative_abode == NULL)
+	    {
+	      tentative_abode = current;
+	      tentative_hashval = hashval % cache->capacity;
+	    }
+	  continue;
+	}
       //if the keys match, replace that pair
       if(!strcmp(current->key,key))
         {
@@ -195,7 +224,14 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
           return;
         }
     }
-  //if you found an open spot, save the pair there
+  //if you do not find yourself, TURN BACK, and set up shop in the first empty hashbucket you can find
+  if(tentative_abode != NULL)
+    {
+      current = tentative_abode;
+      hashval = tentative_hashval;
+    }
+  else for( ; current->key != NULL; current = &cache->dict[++hashval % cache->capacity]) ++i;
+  if(hashpair->maxprobe < i) hashpair->maxprobe = i;
   current->key = calloc(strlen(key)+1,sizeof(uint8_t));
   strcpy(current->key,key);
   current->val = changeval(current->val,val,val_size);
@@ -203,6 +239,7 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
   current->size = val_size;
   cache->memsize += val_size;
   cache->evict->add(cache->evict,current->evict,hashval % cache->capacity);
+
   //resize if over half full
   if((cache->length / (float)cache->capacity) > .5) cache_resize(cache);
 }
@@ -214,7 +251,8 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
   uint64_t n = 0;
   pair *current;
   uint64_t hashval = cache->hash(key) % cache->capacity;
-  for(; n < cache->capacity; hashval = ++hashval % cache->capacity)
+  uint32_t maxprobe = cache->dict[hashval].maxprobe;
+  for(; n <= maxprobe; hashval = ++hashval % cache->capacity)
     {
       current = &cache->dict[hashval];
       if(current->key != NULL)
@@ -237,7 +275,8 @@ void cache_delete(cache_t cache, key_type key)
   uint64_t n = 0;
   pair *current;
   uint64_t hashval = cache->hash(key) % cache->capacity;
-  for(; n < cache->capacity; hashval = ++hashval % cache->capacity)
+  uint32_t maxprobe = cache->dict[hashval].maxprobe;
+  for(; n <= maxprobe; hashval = ++hashval % cache->capacity)
     {
       current = &cache->dict[hashval];
       if(current->key != NULL)

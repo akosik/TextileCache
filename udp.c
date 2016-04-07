@@ -75,10 +75,11 @@ int establish_udp_client(cache_t cache)
 
 int senddgrams(int fd, char *buffer, int size, struct sockaddr *to, socklen_t len)
 {
-  uint32_t total = 0,bytes = 0,leftToSend = size;
+  uint32_t total = 0,bytes = 0,leftToSend = size,packetSize = 0;
   while( total < size )
     {
-      bytes = sendto(fd, buffer + total, leftToSend, 0, (struct sockaddr *)to, len);
+      packetSize = leftToSend > MAXLINE ? MAXLINE : leftToSend;
+      bytes = sendto(fd, buffer + total, packetSize, 0, (struct sockaddr *)to, len);
       if(bytes == -1)
         {
           printf("Send failed\n");
@@ -102,6 +103,7 @@ char* recvdgrams(int fd, struct sockaddr_storage *from)
   int size = sizeof(*from);
   do
     {
+      memset(buffer,0,MAXLINE);
       bytes = recvfrom(fd,buffer,MAXLINE,0,(struct sockaddr *)from, &size);
       if(bytes == -1)
         {

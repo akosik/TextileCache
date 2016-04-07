@@ -95,7 +95,6 @@ void test_get_valsize()
     cache_set(cache, key, value, strlen(value) + 1);
     cache_get(cache, key, &val_size);
     test(val_size == 8, "cache_get sets val_size pointer");
-    printf("%d\n",val_size);
 
     destroy_cache(cache);
 }
@@ -211,8 +210,6 @@ void evict_after_get()
   uint8_t *val1 = (uint8_t*) cache_get(cache,key1,&val_size);
   uint8_t *val2 = (uint8_t*) cache_get(cache,key2,&val_size);
   uint8_t *val3 = (uint8_t*) cache_get(cache,key3,&val_size);
-
-  printf("%s,%s,%s,%s\n",val0,val1,val2,val3);
 
   test(!strcmp(val0,"1") && val1 == NULL && val2 == NULL && !strcmp(val3,"123123124"),"Last accessed key is evicted");
   destroy_cache(cache);
@@ -348,9 +345,8 @@ void val_too_big_but_replacing()
   uint8_t *standinval = "34";
   cache_set(cache,standin,standinval,strlen(standinval) + 1);
   key_type key = (const uint8_t*) "doppleganger";
-  uint8_t string[80] = "0123456789012345678901234567890123456789012345678901234567890123456789012345678";
-  printf("%s\n",string);
-  cache_set(cache,key,string,80);
+  uint8_t string[79] = "012345678901234567890123456789012345678901234567890123456789012345678901234567";
+  cache_set(cache,key,string,79);
 
   uint8_t *new = "43";
   cache_set(cache,key,new,strlen(new) + 1);

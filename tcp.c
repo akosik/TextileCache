@@ -54,7 +54,7 @@ int establish_tcp_server(char *tcpport)
 
   listen_fd = listen(socket_fd,10);
 
-  printf("Listening on TCP port: %s \n",tcpport);
+  printf("Listening...\n");
 
   return socket_fd;
 }

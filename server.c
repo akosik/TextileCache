@@ -234,7 +234,7 @@ cache_t handle_request(int fd, cache_t cache)
 int main(int argc, char *argv[])
 {
   int maxmem = 100;
-  char *tcpport = "2001";
+  char *tcpport= "2001";
   char *udpport = "3001";
 
   for(int i = 2;i < argc; ++i)
