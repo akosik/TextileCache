@@ -2,7 +2,6 @@
 //Handles large, broken sends and receives
 
 #include "udp.h"
-#include "cache.h"
 
 #define MAXLINE 1024
 

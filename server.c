@@ -77,7 +77,7 @@ void handle_get(int fd, cache_t cache)
 
   char *request = recvdgrams(fd,&client);
   if(request == NULL)
-    return cache;
+    return;
 
   int request_size = strlen(request) + 1;
 

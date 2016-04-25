@@ -2,7 +2,6 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
-#include "lru.h"
 
 /*
 The user must define an evicition struct that holds an add and delete function
