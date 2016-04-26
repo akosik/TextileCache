@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdlib.h>
 //#include <mach/mach_time.h>
+#include <time.h>
 #include "testing.h"
 #include "client.h"
 
@@ -41,8 +42,8 @@ void set_multiple()
   uint8_t
     *val1 = (uint8_t*)cache_get(cache,key0,&val_size),
     *val2 = (uint8_t*)cache_get(cache,key1,&val_size);
-  uint8_t *val3 = (uint32_t*)cache_get(cache,key2,&val_size);
-  uint8_t *val4 = (uint64_t*)cache_get(cache,key3,&val_size);
+  uint8_t *val3 = (uint8_t*)cache_get(cache,key2,&val_size);
+  uint8_t *val4 = (uint8_t*)cache_get(cache,key3,&val_size);
 
   test(!strcmp(val1,"hello") && !strcmp(val2,"how are you") && !strcmp(val3,"good thanks") && !strcmp(val4,"me too"), "cache_set stores (multiple) values that are accessible");
 
@@ -51,7 +52,7 @@ void set_multiple()
   free(val3);
   free(val4);
 
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 // Hash function borrowed from Alex Ledger's implementation
@@ -80,7 +81,7 @@ void custom_hash()
     uint8_t *ret = (uint8_t*)cache_get(cache, key, &val_size);
     test(!strcmp(key,"12345"), "cache_get works when given a custom hash (doesn't have to use custom hash)");
 
-    destroy_cache(cache);
+    //destroy_cache(cache);
 }
 
 //Tests if cache returns val_size from cache
@@ -96,7 +97,7 @@ void test_get_valsize()
     cache_get(cache, key, &val_size);
     test(val_size == 8, "cache_get sets val_size pointer");
 
-    destroy_cache(cache);
+    //destroy_cache(cache);
 }
 
 //cache has empty memsize used right after creation
@@ -172,7 +173,7 @@ void eviction_couple()
   uint32_t val_size = 0;
   uint8_t *val = (uint8_t*) cache_get(cache,key3,&val_size);
   test(!strcmp(val,"c"),"keys are evicted to make space for new values");
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 //sets 4 values, gets the first value set, and sets a new value
@@ -212,7 +213,7 @@ void evict_after_get()
   uint8_t *val3 = (uint8_t*) cache_get(cache,key3,&val_size);
 
   test(!strcmp(val0,"1") && val1 == NULL && val2 == NULL && !strcmp(val3,"123123124"),"Last accessed key is evicted");
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 //test struct for next test
@@ -242,7 +243,7 @@ void struct_set()
 
     test(!strcmp(val5,"it's a bag of words!") && val6 == 42 && val7 == NULL,"cache stores structs appropriately");
     free(size);
-    destroy_cache(cache);
+    //destroy_cache(cache);
 }
 
 //cache updates value if new key inserted is the same as one already in the cache
@@ -261,7 +262,7 @@ void get_modified()
 
   test(!strcmp(val2,"53"),"cache updates values");
   free(testval);
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 //cache returns NULL for key that isn't in the cache
@@ -274,7 +275,7 @@ void get_nonexistent()
   char *ret = (char*)cache_get(cache,key,&size);
   test(ret == NULL,"cache returns NULL for gets for keys not in cache");
   free(ret);
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 //cache resizes properly (this does not check evict! (it took some time to isolate these tests) )
@@ -291,7 +292,7 @@ void resize()
       printf("Allocation failed\n");
       exit(1);
     }
-  for(; i <= 10000; ++i)
+  for(; i <= 100; ++i)
     {
       strcat(key,"h");
       cache_set(cache,key,key,strlen(key) + 1);
@@ -304,7 +305,7 @@ void resize()
   if( val != NULL)
     free(val);
 
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 //cache does not insert values that are too big for the cache
@@ -318,7 +319,7 @@ void val_too_big()
   uint32_t val_size = 0;
   char *ret = (char*)cache_get(cache,key,&val_size);
   test(ret == NULL,"cache doesn't save values that are too big to fit in the user specified mem space");
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 //cache returns memused size == to 0 if the val being inserted is too big for the cache (the cache memsize == 0 if the cache didnt increase memsize
@@ -356,7 +357,7 @@ void val_too_big_but_replacing()
   uint8_t *imstillhere = (uint8_t*) cache_get(cache,standin,&val_size);
 
   test(imstillhere != NULL,"cache doesnt evict if a value that would cause memory to exceed maxmem is replacing a value in such a way not to exceed maxmem");
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 //cache doesn't remove the old val if the new val is too big for the cache anyways
@@ -386,7 +387,7 @@ void val_too_big_and_replacing()
   uint8_t *notreplaced = (uint8_t*) cache_get(cache,key,&val_size);
 
   test(!strcmp(notreplaced,"i shall remain"),"cache doesnt replace a value if the new value is too big for the cache");
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 //cache stores its own values instead of references passed in by the user
@@ -404,7 +405,7 @@ void cache_mallocing_vals()
   uint8_t *valnow = (uint8_t*)cache_get(cache,unique,&val_size);
   test(!strcmp(valnow,"34"),"cache malloc's values instead of storing references to (possible) local variables");
   free(valnow);
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 //cache handles large inserts
@@ -439,7 +440,7 @@ void cache_returns_bad_pointers()
   uint8_t *twentyfive = (uint8_t*)cache_get(cache,key,&val_size);
   test(!strcmp(twentyfive,"25"), "cache returns pointers to copied values, not in cache, when returning from cache_get");
   free(twentyfive);
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
 
 void test_get_head()
@@ -450,9 +451,9 @@ void test_get_head()
   cache_set(cache,key,value,strlen(value) + 1);
 
   get_head(cache);
-  destroy_cache(cache);
+  //destroy_cache(cache);
 }
-/*
+
 void test_gets()
 {
   cache_t cache = init();
@@ -462,38 +463,39 @@ void test_gets()
   cache_set(cache,key,val,strlen(val) + 1);
 
   uint32_t val_size = 0;
-  
-  // Get the timebase info 
-  mach_timebase_info_data_t info;
-  mach_timebase_info(&info);
 
-  uint64_t start = mach_absolute_time();
-  for(int i = 0; i < 1000; ++i)
+  uint64_t errors = 0;
+  const uint64_t requests = 1000;
+  const double nsToSec = 1000000000;
+  const uint32_t nsToms = 1000000;
+  struct timespec start, end;
+
+  clock_gettime(CLOCK_MONOTONIC,&start);
+  for(int i = 0; i < requests; ++i)
     {
-      free(cache_get(cache,key,&val_size));
+      if( (cache_get(cache,key,&val_size)) == -1) ++errors;
     }
-  uint64_t end = mach_absolute_time();
+  clock_gettime(CLOCK_MONOTONIC,&end);
+  uint64_t duration = (end.tv_sec * nsToSec + end.tv_nsec) - (start.tv_sec * nsToSec + start.tv_nsec);
 
-  uint64_t duration = end - start;
+  uint64_t ns = duration;
+  double time_elapsed_sec = (double) duration / nsToSec;
 
-  // Convert to nanoseconds
-  duration *= info.numer;
-  duration /= info.denom;
+  double requests_per_second = (double) requests / time_elapsed_sec;
+  double ms = (double) ns / (requests * nsToms);
 
-  duration /= 1000;
-
-  printf("Time per Get: %llu nanoseconds\n",duration);
-
-  destroy_cache(cache);
+  printf("Time per Get: %f milliseconds\n",ms);
+  printf("Requests per second: %f requests\n",requests_per_second);
+  printf("Percent of Requests that failed: %f\n",((double)errors/(double)requests));
 }
-*/
+
 
 int main(int argc, char *argv[])
 {
   hostname = "127.0.0.1";
   tcpport = "2001";
   udpport = "3001";
-  for(int i = 2;i < argc; ++i)
+  for(int i = 1;i < argc; ++i)
     {
       if(!strcmp(argv[i],"-h"))
         hostname = argv[i+1];
@@ -502,8 +504,8 @@ int main(int argc, char *argv[])
       else if(!strcmp(argv[i],"-u"))
         udpport = argv[i+1];
     }
-
-
+  /*
+  resize();
   evict_after_get();
   cache_returns_bad_pointers();
   cache_insert_huge();
@@ -516,7 +518,6 @@ int main(int argc, char *argv[])
   //struct_set();
   get_modified();
   get_nonexistent();
-  resize();
   val_too_big();
   val_too_big_but_replacing();
   cache_mallocing_vals();
@@ -524,5 +525,6 @@ int main(int argc, char *argv[])
   //cache_does_not_change_maxmem();
   //custom_hash();
   test_get_head();
-  //test_gets(); //udp test
+  */
+  test_gets(); //udp test
 }

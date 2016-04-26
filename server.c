@@ -11,10 +11,19 @@
 #include "cache.h"
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 #include "tcp.h"
 #include "udp.h"
+#include <errno.h>
 
 #define MAXLINE 1024
+
+typedef struct session_t
+{
+  int connfd;
+  cache_t **cache;
+  pthread_t tid;
+} session;
 
 //Parses client request into an http command, a primary argument, and a secondary argument
 //Any of these fields can be omitted by passing NULL for that buffer
@@ -70,8 +79,11 @@ int parse_request(char *buffer, char *command, char *primary, char *secondary, u
 
 
 
-void handle_get(int fd, cache_t cache)
+void handle_get(session *sesh)
 {
+  int fd = sesh->connfd;
+  cache_t cache = *sesh->cache;
+
   struct sockaddr_storage client;
   int size = sizeof(struct sockaddr);
 
@@ -88,7 +100,7 @@ void handle_get(int fd, cache_t cache)
       printf("Allocation Failed\n");
     }
 
-  printf("UDP Request: %s\n",request);
+    //printf("UDP Request: %s\n",request);
   parse_request(request,command,primary,NULL,request_size);
 
   if (!strcmp(command,"GET"))
@@ -105,7 +117,7 @@ void handle_get(int fd, cache_t cache)
           sprintf(json,"{ \"key\" : \"%s\", \"val\" : \"%s\" }",primary,ret);
         else
           sprintf(json,"{ \"key\" : \"%s\", \"val\" : \"%s\" }",primary,"NULL");
-        printf("Request Response: %s\n",json);
+        //printf("Request Response: %s\n",json);
 
         //send
         senddgrams(fd,json,strlen(json) + 1,&client,size);
@@ -113,12 +125,16 @@ void handle_get(int fd, cache_t cache)
       }
   free(primary);
   free(request);
+  free(sesh);
 }
 
 
 //handle session
-cache_t handle_request(int fd, cache_t cache)
+cache_t handle_request(session *sesh)
 {
+  int fd = sesh->connfd;
+  cache_t cache = *sesh->cache;
+
   char *request = recvbuffer(fd);
   int request_size = strlen(request) + 1;
 
@@ -195,7 +211,7 @@ cache_t handle_request(int fd, cache_t cache)
             const char *msg = "Clearing cache and ~existing cleanly~.\n";
             sendbuffer(fd,msg,strlen(msg) + 1);
 
-            return NULL;
+            *sesh->cache = NULL;
           }
         else if(!strcmp(primary,"memsize"))
           {
@@ -203,12 +219,11 @@ cache_t handle_request(int fd, cache_t cache)
             uint64_t memsize = atoi(secondary);
             if(cache == NULL || cache_space_used(cache) == 0)
               {
-                cache = create_cache(memsize);
+                *sesh->cache = create_cache(memsize);
                 char msg[100] = {0};
                 printf("Cache created with maxmem of %d.\n",memsize);
                 sprintf(msg,"Cache created with maxmem of %d.\n",memsize);
                 sendbuffer(fd,msg,strlen(msg) + 1);
-                //senddgrams(fd,msg,strlen(msg) + 1,client,sizeof(struct sockaddr));
               }
             else
               {
@@ -228,32 +243,32 @@ cache_t handle_request(int fd, cache_t cache)
   free(request);
   free(primary);
   free(secondary);
-  return cache;
+  close(fd);
 }
 
 int main(int argc, char *argv[])
 {
   int maxmem = 100;
-  char *tcpport= "2001";
-  char *udpport = "3001";
-
-  for(int i = 2;i < argc; ++i)
+  char tcpport[20]= "2001";
+  char udpport[20] = "3001";
+  for(int i = 1;i < argc; ++i)
     {
       if(!strcmp(argv[i],"-m"))
         maxmem = atoi(argv[i+1]);
       else if (!strcmp(argv[i],"-t"))
-        tcpport = argv[i+1];
+        strcpy(tcpport,argv[i+1]);
       else if(!strcmp(argv[i],"-u"))
-        udpport = argv[i+1];
+        strcpy(udpport,argv[i+1]);
     }
 
+  session *sesh;
   cache_t cache = create_cache(maxmem);
 
   int tcp_fd = establish_tcp_server(tcpport);
   int udp_fd = establish_udp_server(udpport);
 
   struct sockaddr_in clientaddr;
-  socklen_t clientaddr_size;
+  socklen_t clientaddr_size = sizeof(clientaddr);
   char ip4[INET_ADDRSTRLEN];
   int connfd;
 
@@ -273,17 +288,28 @@ int main(int argc, char *argv[])
         }
       if(FD_ISSET(udp_fd,&readfds))
         {
-          handle_get(udp_fd,cache);
-          }
+	  sesh = calloc(1,sizeof(session));
+	  sesh->cache = &cache;
+	  sesh->connfd = udp_fd;
+	  pthread_create(&sesh->tid,NULL, handle_get, sesh);
+	}
 
       if(FD_ISSET(tcp_fd, &readfds))
-        {
-          connfd = accept(tcp_fd, (struct sockaddr*) &clientaddr, &clientaddr_size);
+	{
+	  if ( (connfd = accept(tcp_fd, (struct sockaddr*) &clientaddr, &clientaddr_size) ) == -1)
+	    {
+	      printf("Connection Failed. %d\n",errno);
+	      close(connfd);
+	      continue;
+	    }
+
           inet_ntop(AF_INET, &(clientaddr.sin_addr), ip4, INET_ADDRSTRLEN);
           printf("Connection with %s.\n", ip4);
-
-          cache = handle_request(connfd,cache);
-          close(connfd);
+	  
+	  sesh = calloc(1,sizeof(session));
+	  sesh->cache = &cache;
+	  sesh->connfd = connfd;
+	  pthread_create(&sesh->tid, NULL, handle_request, sesh);
         }
     }
   exit(0);

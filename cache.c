@@ -3,9 +3,11 @@
 
 #include <stdio.h>
 #include "cache.h"
+#include <errno.h>
 
 typedef struct pair_t
 {
+  pthread_rwlock_t lock;
   key_type key;
   val_type val;
   size_t size;
@@ -18,10 +20,13 @@ struct cache_obj
   //The list of key-value pairs
   pair *dict;
   //The total number of bins in the dict, following c++ naming conventions
+  pthread_rwlock_t caplock;
   size_t capacity;
   //Number of keys in the cache
+  pthread_rwlock_t lenlock;
   size_t length;
   //Size taken up by values
+  pthread_rwlock_t memlock;
   size_t memsize;
   //Maximum Memory
   size_t maxmem;
@@ -31,7 +36,7 @@ struct cache_obj
   evict_class *evict;
 };
 
-// Default hash known as djb2
+// Default hash: djb2
 uint64_t defaultHash(key_type str)
 {
   uint64_t hash = 5381;
@@ -62,6 +67,10 @@ void *changeval(void *cacheval, const void *newval, size_t val_size)
 // all data into the new cache
 void cache_resize(cache_t cache)
 {
+  //Lock cache
+  for(uint64_t step = 0; step < cache->capacity; ++step)
+      pthread_rwlock_wrlock(&cache->dict[step].lock);
+
   //Reallocate
   pair *temp = NULL;
   temp = calloc(cache->capacity * 2, sizeof(pair));
@@ -82,7 +91,8 @@ void cache_resize(cache_t cache)
     {
       if(cache->dict[i].key != NULL)
         {
-          //Rehash and probe, then reset everything
+          //Rehash and probe, then reset everything into the new cache
+	  //No locks needed since resize halts all operations (and no one know about this cache yet)
           hashval = cache->hash(cache->dict[i].key) % (cache->capacity * 2);
 	  hashpair = &temp[hashval];
           for(current = &temp[hashval]; current->key != NULL; current = &temp[++hashval % (cache->capacity * 2)]) ++probelength;
@@ -133,6 +143,7 @@ cache_t create_cache(uint64_t maxmem)
       cache->dict[i].key = NULL;
       cache->dict[i].val = NULL;
       cache->dict[i].evict = calloc(1,sizeof(struct node_t));
+      pthread_rwlock_init(&cache->dict[i].lock,NULL);
     }
 
   //Allocate eviction metadata
@@ -141,7 +152,11 @@ cache_t create_cache(uint64_t maxmem)
 
   //Set metadata, length and memsize will be 0 from calloc
   cache->capacity = 100;
+  pthread_rwlock_init(&cache->caplock,NULL);
+  pthread_rwlock_init(&cache->lenlock,NULL);
+  pthread_rwlock_init(&cache->memlock,NULL);
   cache->maxmem = maxmem;
+  printf("Maxmem: %d,%d\n",maxmem,cache->maxmem);
 
   //Set function pointers
   cache->hash = defaultHash;
@@ -157,6 +172,7 @@ cache_t create_cache(uint64_t maxmem)
 // from the cache to accomodate the new value.
 void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 {
+  printf("Maxmem: %d\n",cache->maxmem);
   // if the value is too big, don't even bother, tell the user to get more RAM
   if(val_size > cache->maxmem)
     {
@@ -166,33 +182,59 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 
   pair *current;
   uint32_t old_val_size = 0;
+
+  pthread_rwlock_rdlock(&cache->caplock);
   uint64_t hashval = cache->hash(key) % cache->capacity;
+  pthread_rwlock_rdlock(&cache->dict[hashval].lock);
   uint32_t probelength = cache->dict[hashval].maxprobe;
+  pthread_rwlock_unlock(&cache->dict[hashval].lock);
+
   uint64_t curr_index;
   for(int i = 0; i <= probelength; ++i )
     {
       curr_index = ((hashval + i) % cache->capacity);
+      pthread_rwlock_rdlock(&cache->dict[curr_index].lock);
       if(cache->dict[curr_index].key != NULL)
 	{
 	  if(!strcmp(cache->dict[curr_index].key,key))
 	    {
 	      old_val_size = cache->dict[curr_index].size;
+	      pthread_rwlock_unlock(&cache->dict[curr_index].lock);
 	      break;
 	    }
 	}
+      pthread_rwlock_unlock(&cache->dict[curr_index].lock);
     }
+
   // Remove values until the cache has enough room for the new value
+  pthread_rwlock_rdlock(&cache->memlock);
+  printf("Memsize: %d, Maxmem: %d\n",cache->memsize,cache->maxmem);
   while((cache->memsize + val_size - old_val_size) > cache->maxmem)
     {
       uint64_t index = cache->evict->remove(cache->evict);
       current = &cache->dict[index];
-      free(current->key);
-      free(current->val);
-      current->key = NULL;
-      current->val = NULL;
-      cache->memsize -= current->size;
-      --cache->length;
+      
+      pthread_rwlock_wrlock(&current->lock);
+      if (current->key != NULL)
+	{
+	  free(current->key);
+	  free(current->val);
+	  current->key = NULL;
+	  current->val = NULL;
+
+	  pthread_rwlock_unlock(&cache->memlock);
+	  pthread_rwlock_wrlock(&cache->memlock);
+	  cache->memsize -= current->size;
+	  pthread_rwlock_unlock(&cache->memlock);
+	  pthread_rwlock_rdlock(&cache->memlock);
+
+	  pthread_rwlock_wrlock(&cache->lenlock);
+	  --cache->length;
+	  pthread_rwlock_unlock(&cache->lenlock);
+	}
+      pthread_rwlock_unlock(&current->lock);
     }
+  pthread_rwlock_unlock(&cache->memlock);
 
   // hash the key and perform linear probing until an open spot is found.
   // Since the cache resizes, the cache should never be full.
@@ -204,6 +246,7 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
   for(current = &cache->dict[hashval]; i <= probelength; current = &cache->dict[++hashval % cache->capacity])
     {
       ++i;
+      pthread_rwlock_rdlock(&current->lock);
       if(current->key == NULL) 
 	{
 	  if(tentative_abode == NULL)
@@ -211,37 +254,71 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
 	      tentative_abode = current;
 	      tentative_hashval = hashval % cache->capacity;
 	    }
+	  pthread_rwlock_unlock(&current->lock);
 	  continue;
 	}
       //if the keys match, replace that pair
       if(!strcmp(current->key,key))
         {
+	  pthread_rwlock_unlock(&current->lock);
+	  pthread_rwlock_wrlock(&current->lock);
+
           current->val = changeval(current->val,val,val_size);
+
+	  pthread_rwlock_wrlock(&cache->memlock);
           cache->memsize -= current->size;
           cache->memsize += val_size;
+	  pthread_rwlock_unlock(&cache->memlock);
+
           current->size = val_size;
           cache->evict->add(cache->evict,current->evict,hashval % cache->capacity);
+	  pthread_rwlock_unlock(&cache->caplock);
+	  pthread_rwlock_unlock(&current->lock);
           return;
         }
+      pthread_rwlock_unlock(&current->lock);
     }
+
   //if you do not find yourself, TURN BACK, and set up shop in the first empty hashbucket you can find
   if(tentative_abode != NULL)
     {
       current = tentative_abode;
+      pthread_rwlock_wrlock(&current->lock);
       hashval = tentative_hashval;
     }
-  else for( ; current->key != NULL; current = &cache->dict[++hashval % cache->capacity]) ++i;
+  else 
+    for( pthread_rwlock_wrlock(&current->lock) ; current->key != NULL; current = &cache->dict[++hashval % cache->capacity], pthread_rwlock_wrlock(&current->lock) )
+      {
+	pthread_rwlock_unlock(&current->lock);
+	++i;
+      }
+
   if(hashpair->maxprobe < i) hashpair->maxprobe = i;
+
   current->key = calloc(strlen(key)+1,sizeof(uint8_t));
   strcpy(current->key,key);
   current->val = changeval(current->val,val,val_size);
+
+  pthread_rwlock_wrlock(&cache->lenlock);
   ++cache->length;
+  pthread_rwlock_unlock(&cache->lenlock);
+
   current->size = val_size;
+
+  pthread_rwlock_wrlock(&cache->memlock);
   cache->memsize += val_size;
+  pthread_rwlock_unlock(&cache->memlock);
+
   cache->evict->add(cache->evict,current->evict,hashval % cache->capacity);
+  pthread_rwlock_unlock(&current->lock);
 
   //resize if over half full
-  if((cache->length / (float)cache->capacity) > .5) cache_resize(cache);
+  pthread_rwlock_rdlock(&cache->lenlock);
+  if((cache->length / (float)cache->capacity) > .5) 
+      cache_resize(cache);
+
+  pthread_rwlock_unlock(&cache->lenlock);
+  pthread_rwlock_unlock(&cache->caplock);
 }
 
 // Retrieve the value associated with key in the cache, or NULL if not found
@@ -250,22 +327,32 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
   //hash and check for a key match, else return NULL
   uint64_t n = 0;
   pair *current;
+
+  pthread_rwlock_rdlock(&cache->caplock);
   uint64_t hashval = cache->hash(key) % cache->capacity;
   uint32_t maxprobe = cache->dict[hashval].maxprobe;
   for(; n <= maxprobe; hashval = ++hashval % cache->capacity)
     {
       current = &cache->dict[hashval];
+      pthread_rwlock_rdlock(&current->lock);
       if(current->key != NULL)
         {
           if(!strcmp(current->key,key))
             {
+	      //switch to write lock
+	      pthread_rwlock_unlock(&current->lock);
+	      pthread_rwlock_wrlock(&current->lock);
               cache->evict->add(cache->evict,current->evict,hashval);
               *val_size = current->size;
+	      pthread_rwlock_unlock(&cache->caplock);
+	      pthread_rwlock_unlock(&current->lock);
               return current->val;
             }
         }
+      pthread_rwlock_unlock(&current->lock);
       ++n;
     }
+  pthread_rwlock_unlock(&cache->caplock);
   return NULL;
 }
 
@@ -274,25 +361,41 @@ void cache_delete(cache_t cache, key_type key)
 {
   uint64_t n = 0;
   pair *current;
+
+  pthread_rwlock_rdlock(&cache->caplock);
   uint64_t hashval = cache->hash(key) % cache->capacity;
   uint32_t maxprobe = cache->dict[hashval].maxprobe;
   for(; n <= maxprobe; hashval = ++hashval % cache->capacity)
     {
       current = &cache->dict[hashval];
+      pthread_rwlock_rdlock(&current->lock);
       if(current->key != NULL)
         {
           if(!strcmp(current->key,key))
             {
+	      //switch to write lock
+	      pthread_rwlock_unlock(&current->lock);
+	      pthread_rwlock_wrlock(&current->lock);
               free(current->key);
               free(current->val);
               current->key = NULL;
               current->val = NULL;
               cache->evict->remove(cache->evict);
+
+	      pthread_rwlock_wrlock(&cache->lenlock);
               --cache->length;
+	      pthread_rwlock_unlock(&cache->lenlock);
+
+	      pthread_rwlock_wrlock(&cache->memlock);
               cache->memsize -= current->size;
+	      pthread_rwlock_unlock(&cache->memlock);
+
+	      pthread_rwlock_unlock(&cache->caplock);
+	      pthread_rwlock_unlock(&current->lock);
               return;
             }
         }
+      pthread_rwlock_unlock(&current->lock);
       ++n;
     }
 }
@@ -300,20 +403,19 @@ void cache_delete(cache_t cache, key_type key)
 // Compute the total amount of memory used up by all cache values (not keys)
 uint64_t cache_space_used(cache_t cache)
 {
-  return cache->memsize;
+  pthread_rwlock_rdlock(&cache->memlock);
+  uint64_t ret = cache->memsize;
+  pthread_rwlock_unlock(&cache->memlock);
+  return ret;
 }
 
-// Destroy all resources connected to a cache object
-// Destroy is not constant time but presumably you don't need speed here since
-// you're tearing down your cache.
-// you could just leave this function blank and let the OS free everything,
-// then it would LOOK constant, but then hopefully you don't plan on keeping
-// the program running.
 void destroy_cache(cache_t cache)
 {
   uint64_t i = 0;
+  pthread_rwlock_rdlock(&cache->caplock);
   for( ; i < cache->capacity; ++i)
     {
+      pthread_rwlock_wrlock(&cache->dict[i].lock);
       if(cache->dict[i].key != NULL)
         {
           free(cache->dict[i].key);
@@ -321,7 +423,6 @@ void destroy_cache(cache_t cache)
         }
       free(cache->dict[i].evict);
     }
-
   free(cache->dict);
   free(cache->evict);
   free(cache);

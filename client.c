@@ -169,7 +169,10 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
 
   //send it off
   if ( senddgrams(udpfd,sendbuff,strlen(sendbuff) + 1,cache->udpinfo->ai_addr,cache->udpinfo->ai_addrlen) < 0)
-    return NULL;
+    {
+      close(udpfd);
+      return NULL;
+    }
 
   free(sendbuff);
 
@@ -177,7 +180,8 @@ val_type cache_get(cache_t cache, key_type key, uint32_t *val_size)
   char *recvbuff = recvdgrams(udpfd,cache->udpinfo->ai_addr);
   if(recvbuff == NULL)
     {
-      return NULL;
+      close(udpfd);
+      return -1;
     }
 
   //printf("Server Response: %s\n",recvbuff);

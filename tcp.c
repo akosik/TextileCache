@@ -1,6 +1,7 @@
 //TCP Establish, Send and Receive
 
 #include "tcp.h"
+#include <errno.h>
 
 #define MAXLINE 1024
 
@@ -52,9 +53,13 @@ int establish_tcp_server(char *tcpport)
 
   freeaddrinfo(res);
 
-  listen_fd = listen(socket_fd,10);
+  if ( (listen(socket_fd,10)) < 0 )
+    {
+      printf("Could not listen.\n");
+      exit(1);
+    }
 
-  printf("Listening...\n");
+  printf("Listening on Port %s...\n",tcpport);
 
   return socket_fd;
 }
@@ -118,7 +123,7 @@ char* recvbuffer(int fd)
       bytes = read(fd,buffer,MAXLINE);
       if(bytes == -1)
         {
-          printf("Read failed\n");
+          printf("TCP Read failed: %d\n", errno);
           exit(1);
         }
       if( total + bytes > response_size)

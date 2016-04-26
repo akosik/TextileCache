@@ -2,16 +2,20 @@ CC = gcc
 
 CFLAGS = -Wall -pedantic -Werror
 
+all:
+	make server
+	make client
+
 server:
-	$(CC) -std=gnu99 server.c cache.c lru.c tcp.c udp.c -o $@
+	$(CC) -std=gnu99 -pthread server.c cache.c lru.c tcp.c udp.c -o $@
 
 client:
 	$(CC) -std=gnu99 test.c testing.c client.c jsmn/jsmn.c tcp.c udp.c -o $@
 
-clean_server:
+sclean:
 	rm server
 
-clean_client:
+cclean:
 	rm client
 
 clean:
