@@ -10,7 +10,7 @@
 #include <string.h>
 #include <errno.h>
 #include "cache.h"
-#include "jsmn/jsmn.h"
+#include "../jsmn/jsmn.h"
 #include "udp.h"
 #include "tcp.h"
 
