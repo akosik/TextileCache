@@ -492,7 +492,7 @@ void test_gets()
 
 int main(int argc, char *argv[])
 {
-  hostname = "127.0.0.1";
+  hostname = "134.10.103.231";
   tcpport = "2001";
   udpport = "3001";
   for(int i = 1;i < argc; ++i)

@@ -148,6 +148,7 @@ void handle_request(session *sesh)
   printf("Handling...\n");
   ++numpthreads;
   int fd = sesh->connfd;
+  printf("FD: %d\n",fd);
   cache_t cache = *sesh->cache;
 
   char *request = recvbuffer(fd);
@@ -349,7 +350,7 @@ int main(int argc, char *argv[])
 	  sesh->connfd = connfd;
 	  printf("Spawning thread: %d\n",numpthreads);
 	  if ( ( stat = pthread_create(&sesh->tid, NULL, handle_request, sesh) ) != 0) exit(1);
-	  pthread_detach(sesh->tid);
+	  //pthread_detach(sesh->tid);
         }
     }
   exit(0);

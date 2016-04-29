@@ -49,6 +49,7 @@ int establish_udp_server(char *udpport)
       exit(1);
     }
 
+  freeaddrinfo(res);
   return socket_fd;
 }
 

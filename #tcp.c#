@@ -124,7 +124,7 @@ char* recvbuffer(int fd)
       bytes = read(fd,buffer,MAXLINE);
       if(bytes == -1)
         {
-          printf("TCP Read failed: %d, %d\n", errno,fd);
+          printf("TCP Read failed: %d\n", errno);
           return NULL;
         }
       if( total + bytes > response_size)
@@ -144,6 +144,6 @@ char* recvbuffer(int fd)
       total += bytes;
     }
   while( buffer[bytes - 1] != '\0' );
-
+  printf("%s\n",response);
   return response;
 }

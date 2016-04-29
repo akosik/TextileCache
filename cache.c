@@ -67,6 +67,7 @@ void *changeval(void *cacheval, const void *newval, size_t val_size)
 // all data into the new cache
 void cache_resize(cache_t cache)
 {
+  printf("Resizing...\n");
   //Lock cache
   for(uint64_t step = 0; step < cache->capacity; ++step)
       pthread_rwlock_wrlock(&cache->dict[step].lock);
@@ -286,12 +287,14 @@ void cache_set(cache_t cache, key_type key, val_type val, uint32_t val_size)
       pthread_rwlock_wrlock(&current->lock);
       hashval = tentative_hashval;
     }
-  else 
-    for( pthread_rwlock_wrlock(&current->lock) ; current->key != NULL; current = &cache->dict[++hashval % cache->capacity], pthread_rwlock_wrlock(&current->lock) )
-      {
-	pthread_rwlock_unlock(&current->lock);
-	++i;
-      }
+  else
+    {
+      for( pthread_rwlock_wrlock(&current->lock) ; current->key != NULL; current = &cache->dict[++hashval % cache->capacity], pthread_rwlock_wrlock(&current->lock) )
+	{
+	  pthread_rwlock_unlock(&current->lock);
+	  ++i;
+	}
+    }
 
   if(hashpair->maxprobe < i) hashpair->maxprobe = i;
 
