@@ -1,0 +1,47 @@
+#include "threadpool.h"
+
+void work(work_queue *wq)
+{
+  while(1)
+    {
+      printf("working...\n");
+      pthread_mutex_lock(&wq->lock);
+      if(wq->next_job != NULL)
+	{
+	  task *myjob = wq->next_job;
+	  wq->next_job = wq->next_job->next;
+	  if(wq->last == myjob) wq->last = NULL;
+	  myjob->job(myjob->materials);
+	  free(myjob);
+	  pthread_mutex_unlock(&wq->lock);
+	}
+      else pthread_mutex_unlock(&wq->lock);
+    }
+}
+
+pthread_t* threadpool_init(int numthreads, work_queue *wq)
+{
+  pthread_t *threads = calloc(numthreads,sizeof(pthread_t));
+
+  for(int i=0; i < numthreads; ++i)
+    {
+      pthread_create(&threads[i],NULL,work,wq);
+    }
+  return threads;
+}
+
+void work_queue_add(work_queue *wq, task *task)
+{
+  pthread_mutex_lock(&wq->lock);
+  if(wq->last != NULL) wq->last->next = task;
+  wq->last = task;
+  if(wq->next_job == NULL) wq->next_job = task;
+  pthread_mutex_unlock(&wq->lock);
+}
+
+
+void print_queue(work_queue *wq)
+{
+  for(task *errand = wq->next_job; errand != NULL; errand = errand->next)
+    if(errand->id != 34) printf("%d\n",errand);
+}

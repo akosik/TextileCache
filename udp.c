@@ -49,6 +49,7 @@ int establish_udp_server(char *udpport)
       exit(1);
     }
 
+  freeaddrinfo(res);
   return socket_fd;
 }
 
@@ -81,7 +82,7 @@ int senddgrams(int fd, char *buffer, int size, struct sockaddr *to, socklen_t le
       bytes = sendto(fd, buffer + total, packetSize, 0, (struct sockaddr *)to, len);
       if(bytes == -1)
         {
-          printf("Send failed\n");
+          printf("UDP Send failed\n");
           printf("Bytes sent: %d\n",total);
           return -1;
         }
@@ -106,7 +107,7 @@ char* recvdgrams(int fd, struct sockaddr_storage *from)
       bytes = recvfrom(fd,buffer,MAXLINE,0,(struct sockaddr *)from, &size);
       if(bytes == -1)
         {
-          printf("Read failed\n");
+          printf("UDP Read failed\n");
 	  free(response);
           return NULL;
         }
