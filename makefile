@@ -1,27 +1,41 @@
-CC = gcc
+CC = gcc -std=gnu99
 
 DEBUG = -g
 
 CFLAGS = -Wall -pedantic -Werror
 
+SERVER_FILES = src/server.c src/cache.c src/lru.c src/tcp.c src/udp.c src/threadpool.c
+CLIENT_FILES = src/client.c src/tcp.c src/udp.c jsmn/jsmn.c
+
 all:
-	make server
-	make client
+	make server 
+	make set_client 
+	make get_client
+	make delete_client
 
 server:
-	$(CC) -std=gnu99 -pthread server.c cache.c lru.c tcp.c udp.c threadpool.c -o $@
+	$(CC) -pthread $(SERVER_FILES) -O3 $@
 
-client:
-	$(CC) -std=gnu99 test.c testing.c client.c jsmn/jsmn.c tcp.c udp.c -o $@
+set_client:
+	$(CC) src/set_client.c $(CLIENT_FILES) -O3 $@
+ 
+get_client:
+	$(CC) src/get_client.c $(CLIENT_FILES) -O3 $@
 
-sclean:
+delete_client:
+	$(CC) src/delete_client.c $(CLIENT_FILES) -O3 $@
+
+clean_server:
 	rm server
 
-cclean:
-	rm client
-
-debug: 
-	$(CC) -std=gnu99 -pthread $(DEBUG) server.c cache.c lru.c tcp.c udp.c threadpool.c -o $@
+clean_clients:
+	rm set_client get_client delete_client
 
 clean:
-	rm server client
+	rm server set_client get_client delete_client
+
+
+
+
+
+

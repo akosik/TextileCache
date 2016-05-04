@@ -9,8 +9,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-#include "client.h"
-#include "jsmn/jsmn.h"
+#include "cache.h"
+#include "../jsmn/jsmn.h"
 #include "udp.h"
 #include "tcp.h"
 
