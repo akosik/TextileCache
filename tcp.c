@@ -100,8 +100,8 @@ void sendbuffer(int fd, char *buffer, uint32_t size)
 
       if(bytes == -1)
         {
-          printf("Send failed\n");
-          exit(1);
+          printf("TCP Send failed %d\n",fd);
+          return;
         }
       total += bytes;
       leftToSend -= bytes;
@@ -124,7 +124,7 @@ char* recvbuffer(int fd)
       bytes = read(fd,buffer,MAXLINE);
       if(bytes == -1)
         {
-          printf("TCP Read failed: %d, %d\n", errno,fd);
+          printf("TCP Read failed: %d,%d\n", errno,fd);
           return NULL;
         }
       if( total + bytes > response_size)

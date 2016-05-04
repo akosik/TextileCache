@@ -50,7 +50,7 @@ uint64_t lru_remove(evict_class *e)
   if(e->lrupair == NULL)
     {
       printf("Value too large to be stored in cache.\n");
-      exit(1);
+      return -1;
     }
 
   uint64_t index = e->lrupair->tabindex;

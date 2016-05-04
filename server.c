@@ -15,15 +15,27 @@
 #include "tcp.h"
 #include "udp.h"
 #include <errno.h>
+#include "threadpool.h"
 
 #define MAXLINE 1024
-int numpthreads = 0;
-typedef struct session_t
+#define MAX_THREADS 4
+
+typedef struct tcpsession_t
 {
   int connfd;
   cache_t **cache;
-  pthread_t tid;
-} session;
+  pthread_t *threads;
+} tcpsession;
+
+typedef struct udpsession_t
+{
+  int connfd;
+  cache_t **cache;
+  pthread_t *threads;
+  struct sockaddr_storage client;
+  char *request;
+} udpsession;
+
 
 //Parses client request into an http command, a primary argument, and a secondary argument
 //Any of these fields can be omitted by passing NULL for that buffer
@@ -79,23 +91,13 @@ int parse_request(char *buffer, char *command, char *primary, char *secondary, u
 
 
 
-void handle_get(session *sesh)
+void handle_get(udpsession *sesh)
 {
-  ++numpthreads;
   int fd = sesh->connfd;
   cache_t cache = *sesh->cache;
-
-  struct sockaddr_storage client;
+  char *request = sesh->request;
+  struct sockaddr_storage client = sesh->client;
   int size = sizeof(struct sockaddr);
-
-  char *request = recvdgrams(fd,&client);
-  if(request == NULL)
-    {
-      --numpthreads;
-      free(sesh);
-      close(fd);
-      pthread_exit(1);
-    }
 
   int request_size = strlen(request) + 1;
 
@@ -104,14 +106,12 @@ void handle_get(session *sesh)
     if(primary == NULL)
     {
       printf("Allocation Failed\n");
-      --numpthreads;
       free(sesh);
-      close(fd);
-      pthread_exit(1);
+      return;
     }
 
     //printf("UDP Request: %s\n",request);
-  parse_request(request,command,primary,NULL,request_size);
+    parse_request(request,command,primary,NULL,request_size);
 
   if (!strcmp(command,"GET"))
       {
@@ -133,21 +133,19 @@ void handle_get(session *sesh)
         senddgrams(fd,json,strlen(json) + 1,&client,size);
         free(json);
       }
-  --numpthreads;
   free(primary);
   free(request);
   free(sesh);
-  close(fd);
-  pthread_exit(0);
+  return;
 }
 
 
 //handle session
-void handle_request(session *sesh)
+void handle_request(tcpsession *sesh)
 {
   printf("Handling...\n");
-  ++numpthreads;
   int fd = sesh->connfd;
+  printf("FD: %d\n",fd);
   cache_t cache = *sesh->cache;
 
   char *request = recvbuffer(fd);
@@ -157,8 +155,7 @@ void handle_request(session *sesh)
       
       free(sesh);
       close(fd);
-      pthread_exit(1);
-      --numpthreads;
+      return;
     }
   int request_size = strlen(request) + 1;
 
@@ -171,8 +168,7 @@ void handle_request(session *sesh)
       
       close(fd);
       free(sesh);
-      pthread_exit(1);
-      --numpthreads;
+      return;
     }
   char *secondary = calloc(request_size,1);
     if(secondary == NULL)
@@ -182,11 +178,10 @@ void handle_request(session *sesh)
       free(primary);
       free(sesh);
       close(fd);
-      pthread_exit(1);
-      --numpthreads; 
+      return;
     }
 
-    printf("TCP Request: %s\n",request);
+    //printf("TCP Request: %s\n",request);
 
   //get command
   parse_request(request,command,NULL,NULL,request_size);
@@ -236,6 +231,8 @@ void handle_request(session *sesh)
 
         if(!strcmp(primary,"shutdown"))
           {
+	    for(int i = 0; i < MAX_THREADS; ++i)
+	      pthread_join(sesh->threads[i],NULL);
             //destroy the cache
             destroy_cache(cache);
 
@@ -278,8 +275,7 @@ void handle_request(session *sesh)
   free(secondary);
   free(sesh);
   close(fd);
-  pthread_exit(0);
---numpthreads;
+  return;
 }
 
 int main(int argc, char *argv[])
@@ -297,7 +293,9 @@ int main(int argc, char *argv[])
         strcpy(udpport,argv[i+1]);
     }
 
-  session *sesh;
+  tcpsession *tsesh;
+  udpsession *usesh;
+  task *errand;
   cache_t cache = create_cache(maxmem);
 
   int tcp_fd = establish_tcp_server(tcpport);
@@ -313,22 +311,37 @@ int main(int argc, char *argv[])
   int fdmax = udp_fd < tcp_fd ? tcp_fd : udp_fd;
   int ret = 0, stat = 0;
 
+  work_queue *wq = calloc(sizeof(work_queue),1);
+  pthread_mutex_init(&wq->lock,NULL);
+  pthread_t *threads = threadpool_init(MAX_THREADS,wq);
+
   while(1)
     {
       FD_SET(tcp_fd, &readfds);
+
       FD_SET(udp_fd, &readfds);
+
       if ( (ret = select(fdmax+1, &readfds, NULL, NULL, NULL)) == -1)
         {
           printf("Select Error.\n");
           exit(1);
         }
+
       if(FD_ISSET(udp_fd,&readfds))
         {
-	  sesh = calloc(1,sizeof(session));
-	  sesh->cache = &cache;
-	  sesh->connfd = udp_fd;
-	  pthread_create(&sesh->tid,NULL, handle_get, sesh);
-	  pthread_detach(sesh->tid);
+	  errand = calloc(1,sizeof(task));
+	  usesh = calloc(1,sizeof(udpsession));
+	  if (usesh == NULL) exit(1);
+	  usesh->cache = &cache;
+	  usesh->connfd = udp_fd;
+
+	  usesh->request = recvdgrams(udp_fd,&usesh->client);
+	  if(usesh->request == NULL)
+	      free(usesh);
+
+	  errand->materials = usesh;
+	  errand->job = handle_get;
+	  work_queue_add(wq,errand);
 	}
 
       if(FD_ISSET(tcp_fd, &readfds))
@@ -343,14 +356,18 @@ int main(int argc, char *argv[])
           inet_ntop(AF_INET, &(clientaddr.sin_addr), ip4, INET_ADDRSTRLEN);
           printf("Connection with %s.\n", ip4);
 	  
-	  sesh = calloc(1,sizeof(session));
-	  if (sesh == NULL) exit(1);
-	  sesh->cache = &cache;
-	  sesh->connfd = connfd;
-	  printf("Spawning thread: %d\n",numpthreads);
-	  if ( ( stat = pthread_create(&sesh->tid, NULL, handle_request, sesh) ) != 0) exit(1);
-	  pthread_detach(sesh->tid);
+	  errand = calloc(1,sizeof(task));
+	  tsesh = calloc(1,sizeof(tcpsession));
+	  if (tsesh == NULL) exit(1);
+	  tsesh->cache = &cache;
+	  tsesh->connfd = connfd;
+	  tsesh->threads = threads;
+	  errand->materials = tsesh;
+	  errand->job = handle_request;
+	  work_queue_add(wq,errand);
         }
+
     }
+  free(threads);
   exit(0);
 }
