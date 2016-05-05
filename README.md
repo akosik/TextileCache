@@ -4,17 +4,19 @@
 
 ###Getting started
 ####How to clone this repository:
-```git clone --recursive https://github.com/akosik/TextileCache.git```
+`git clone --recursive https://github.com/akosik/TextileCache.git`
+
 Leaving out the recursive flag will make git ignore the submodule jsmn and stunt client compilation.
 
 ####How to run things:
 Compiled and tested on Linux (done by adding -gnu=c99 flag to compile on Linux)
 Make file will work on Linux, no need for any changes if testing on either operating system
-*```./server``` will run server side.
-*```python distribution.py x | ./set_client x``` will run a testing client for set requests.
-*```python distribution.py x | ./get_client x``` will run a testing client for get requests.
-*```python distribution.py x | ./delete_client x``` will run a testing client for delete requests.
+* `./server` will run server side.
+* `python distribution.py x | ./set_client x` will run a testing client for set requests.
+* `python distribution.py x | ./get_client x` will run a testing client for get requests.
+* `python distribution.py x | ./delete_client x` will run a testing client for delete requests.
 Replace `x` with the number of requests the client should make.
+Note: You will need to have python's SciPy library installed for distribution.py to work.
 
 
 ###Improvements on our cache design
