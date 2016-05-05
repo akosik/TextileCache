@@ -1,4 +1,4 @@
-CC = gcc -std=gnu99
+CC = gcc -std=gnu99 -O3
 
 DEBUG = -g
 
@@ -14,16 +14,16 @@ all:
 	make delete_client
 
 server:
-	$(CC) -pthread $(SERVER_FILES) -O3 $@
+	$(CC) -pg -pthread $(SERVER_FILES) -o $@
 
 set_client:
-	$(CC) src/set_client.c $(CLIENT_FILES) -O3 $@
+	$(CC) src/set_client.c $(CLIENT_FILES) -o $@
  
 get_client:
-	$(CC) src/get_client.c $(CLIENT_FILES) -O3 $@
+	$(CC) src/get_client.c $(CLIENT_FILES) -o $@
 
 delete_client:
-	$(CC) src/delete_client.c $(CLIENT_FILES) -O3 $@
+	$(CC) src/delete_client.c $(CLIENT_FILES) -o $@
 
 clean_server:
 	rm server

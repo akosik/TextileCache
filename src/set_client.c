@@ -54,7 +54,7 @@ void test_gets(uint8_t* keys, uint32_t* values, uint64_t numpairs)
 
 int main(int argc, char *argv[])
 {
-  hostname = "134.10.103.229";
+  hostname = "134.10.103.234";
   tcpport = "2001";
   udpport = "3001";
 
