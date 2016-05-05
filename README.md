@@ -15,6 +15,7 @@ Make file will work on Linux, no need for any changes if testing on either opera
 * `python distribution.py x | ./set_client x` will run a testing client for set requests.
 * `python distribution.py x | ./get_client x` will run a testing client for get requests.
 * `python distribution.py x | ./delete_client x` will run a testing client for delete requests.
+
 Replace `x` with the number of requests the client should make.
 Note: You will need to have python's SciPy library installed for distribution.py to work.
 
