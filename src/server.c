@@ -323,11 +323,11 @@ int main(int argc, char *argv[])
 
       if ( (ret = select(fdmax+1, &readfds, NULL, NULL, NULL)) == -1)
         {
-          if (errno == 4) continue;
-          else{
+          // if (errno == 4) continue;
+          // else{
             printf("Select Error: %d\n",errno);
             exit(1);            
-          }
+          // }
         }
 
       if(FD_ISSET(udp_fd,&readfds))

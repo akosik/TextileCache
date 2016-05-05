@@ -14,7 +14,8 @@ all:
 	make delete_client
 
 server:
-	$(CC) -pg -pthread $(SERVER_FILES) -o $@
+	$(CC) -pthread $(SERVER_FILES) -o $@
+	# $(CC) -pg -pthread $(SERVER_FILES) -o $@
 
 set_client:
 	$(CC) src/set_client.c $(CLIENT_FILES) -o $@
